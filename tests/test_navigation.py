@@ -25,7 +25,7 @@ from navigation import (
     BRAKE_DECEL,
     DEFAULT_ARRIVAL_RADIUS,
     HOLD_SPEED,
-    TURN_SPEED_CAP,
+    REORIENT_SPEED,
     NAV_DRIVE,
     NAV_TURN,
     NAV_BRAKE,
@@ -59,7 +59,7 @@ def test_controls_in_range_over_sweep():
                 controls, _ = drive_to_target(car, Vec3(xy[0], xy[1], 17))
                 for v in (controls.throttle, controls.steer):
                     assert -1.0 <= v <= 1.0 and math.isfinite(v)
-                assert controls.handbrake is False
+                assert isinstance(controls.handbrake, bool)   # may powerslide when misaligned+fast
                 assert controls.boost is False
 
 
@@ -158,6 +158,35 @@ def test_target_distance_is_truthful():
     assert tele["target_distance"] == pytest.approx(1000, abs=1)
 
 
+# --- Degenerate / boundary edge cases -----------------------------------------
+
+def test_target_equals_car_position_no_crash():
+    # dist == 0 must not divide-by-zero; we are trivially "arrived".
+    car = car_with(location=(500, -500, 17), velocity=(0, 0, 0), rotation=(0, 1.0, 0))
+    controls, tele = drive_to_target(car, Vec3(500, -500, 17))
+    assert tele["target_distance"] == pytest.approx(0.0, abs=1e-6)
+    assert math.isfinite(tele["velocity_toward_target"])
+    assert controls.throttle == pytest.approx(0.0)
+    assert controls.steer == pytest.approx(0.0)
+    assert tele["state"] == NAV_ARRIVED
+
+
+def test_exact_arrival_boundary_is_arrival():
+    # dist exactly == arrival_radius falls into the arrival branch (dist <= radius).
+    car = car_with(location=(0, 0, 17), velocity=(0, 0, 0), rotation=(0, 0, 0))
+    controls, tele = drive_to_target(car, Vec3(120, 0, 17), arrival_radius=120)
+    assert tele["state"] == NAV_ARRIVED
+    assert controls.throttle == pytest.approx(0.0)
+
+
+def test_lateral_slide_is_not_called_arrived():
+    # Within the arrival radius but sliding sideways fast: must NOT be ARRIVED.
+    car = car_with(location=(0, 0, 17), velocity=(0, 800, 0), rotation=(0, 0, 0))  # facing +x, sliding +y
+    controls, tele = drive_to_target(car, Vec3(50, 0, 17), arrival_radius=120)
+    assert tele["state"] == NAV_BRAKE
+    assert tele["planar_speed"] > HOLD_SPEED
+
+
 # --- Frame-relative (team-agnostic) -------------------------------------------
 
 def test_navigation_is_frame_relative():
@@ -206,3 +235,68 @@ def test_longitudinal_convergence_and_stop():
     assert vx < HOLD_SPEED + 10.0                     # essentially stopped
     assert max_x <= target_x + 5.0                    # never overshot past the target
     assert last_state in (NAV_ARRIVED, NAV_BRAKE)
+
+
+# --- 2-D convergence (off-axis + behind) --------------------------------------
+
+def _rl_curvature(speed):
+    """Approximate RL full-lock curvature (1/uu) vs speed, from the known table.
+    Radius = 1/curvature grows with speed (~145 uu at 0, ~910 uu at 1410)."""
+    pts = [(0.0, 0.0069), (500.0, 0.00398), (1000.0, 0.00235), (1410.0, 0.0011)]
+    s = max(0.0, min(pts[-1][0], speed))
+    for (s0, k0), (s1, k1) in zip(pts, pts[1:]):
+        if s <= s1:
+            t = (s - s0) / (s1 - s0)
+            return k0 + t * (k1 - k0)
+    return pts[-1][1]
+
+
+def _simulate_2d(target, start_yaw=0.0, arrival=200.0, seconds=20.0):
+    """
+    Drive the REAL controller through a 2-D kinematic model: forward point-mass with
+    RL curvature-vs-speed steering. Powerslide is deliberately NOT modeled, so this is
+    a conservative lower bound on turning ability -- if it converges here it should
+    converge at least as well in-game. Returns (arrived, final_dist, final_speed).
+    """
+    dt = 1.0 / 120.0
+    x = y = 0.0
+    yaw = start_yaw
+    v = 0.0
+    for _ in range(int(seconds / dt)):
+        car = car_with(location=(x, y, 17),
+                       velocity=(v * math.cos(yaw), v * math.sin(yaw), 0),
+                       rotation=(0, yaw, 0))
+        controls, _ = drive_to_target(car, target, arrival_radius=arrival)
+        thr, steer = controls.throttle, controls.steer
+        if thr > 0:
+            a = 1600.0 * max(0.0, 1.0 - v / MAX_DRIVE_SPEED)
+        elif thr < 0:
+            a = -BRAKE_DECEL if v > 0 else 0.0
+        else:
+            a = -525.0 if v > 0 else 0.0
+        v = max(0.0, v + a * dt)
+        yaw += _rl_curvature(v) * steer * v * dt   # dyaw = curvature * steer * ds
+        x += v * math.cos(yaw) * dt
+        y += v * math.sin(yaw) * dt
+        d = math.hypot(target.x - x, target.y - y)
+        if d <= arrival and v < HOLD_SPEED + 10.0:
+            return True, d, v
+    d = math.hypot(target.x - x, target.y - y)
+    return (d <= arrival and v < HOLD_SPEED + 10.0), d, v
+
+
+@pytest.mark.parametrize("ang_deg,dist", [
+    (0, 1500), (45, 1500), (90, 1500), (135, 1500), (180, 1500),
+    (45, 800), (90, 800), (135, 800),
+])
+def test_2d_convergence_offaxis_and_behind(ang_deg, dist):
+    """
+    The car starts at the origin facing +x; the target sits `dist` away at `ang_deg`
+    off the nose (90 = straight to the side, 180 = directly behind). The controller
+    must spiral IN and stop -- NOT orbit forever (the bug the review caught). Powerslide
+    is not modeled, so this is the hard case.
+    """
+    ang = math.radians(ang_deg)
+    target = Vec3(dist * math.cos(ang), dist * math.sin(ang), 17)
+    arrived, d, v = _simulate_2d(target, start_yaw=0.0, arrival=200.0, seconds=22.0)
+    assert arrived, f"did not converge (orbit?): final dist={d:.0f}, speed={v:.0f}"
