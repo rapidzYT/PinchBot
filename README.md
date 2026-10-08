@@ -13,8 +13,8 @@ gameplay features require a physical RLBot GUI test.
 | # | Milestone | Software | Physical (in-game) |
 |---|-----------|----------|--------------------|
 | 0 | RLBot foundation (loads, controls the car) | ✅ VERIFIED | ✅ VERIFIED (2026-10-08) — **foundation frozen** |
-| 1 | Generic navigation to a target | ✅ VERIFIED | ⏳ UNVERIFIED — NavTest procedure below |
-| 2 | Wall-pinch geometry (SEARCH/SETUP) | — | — |
+| 1 | Generic navigation to a target | ✅ VERIFIED | ✅ VERIFIED (2026-10-08) — **navigation frozen** |
+| 2 | Wall-pinch geometry (SEARCH/SETUP) | 🔨 in progress | ⏳ pending |
 | 3 | Wall geometry physically believable | — | — |
 | 4 | Car reaches the pinch setup point | — | — |
 | 5 | Pinch stabilization | — | — |
