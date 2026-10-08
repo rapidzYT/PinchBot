@@ -13,7 +13,7 @@ gameplay features require a physical RLBot GUI test.
 | # | Milestone | Software | Physical (in-game) |
 |---|-----------|----------|--------------------|
 | 0 | RLBot foundation (loads, controls the car) | ✅ VERIFIED | ✅ VERIFIED (2026-10-08) — **foundation frozen** |
-| 1 | Generic navigation to a target | 🔨 in progress | ⏳ pending |
+| 1 | Generic navigation to a target | ✅ VERIFIED | ⏳ UNVERIFIED — NavTest procedure below |
 | 2 | Wall-pinch geometry (SEARCH/SETUP) | — | — |
 | 3 | Wall geometry physically believable | — | — |
 | 4 | Car reaches the pinch setup point | — | — |
@@ -84,3 +84,40 @@ reverse, or spam inputs. The console shows the `IDLE → THROTTLE → STOP` stat
 If that is what you see, Stage 0 is **physically VERIFIED**. If it drives the
 wrong way, never moves, or jitters, report exactly what happened (and the
 telemetry lines) — that is a real bug to diagnose, not to tune around.
+
+## Stage 1 — generic navigation (NavTest)
+
+A separate bot, `NavTest`, exercises the reusable navigation controller
+(`src/navigation.py`). It drives to a **target point** and stops cleanly, with
+these guarantees (enforced by `tests/test_navigation.py`):
+
+* **Steering** uses the proven RLBot convention `clamp(atan2(local.y, local.x)·5, −1, 1)`.
+* **No blind reverse** — `throttle < 0` is only ever braking against current
+  forward motion; a target behind is reached by *turning around* under forward
+  throttle, never by driving backwards.
+* **Clean arrival** — desired speed is derived from the remaining stopping
+  distance (`v = √(2·a·d)`), so the car decelerates to 0 at the target and holds,
+  without circling or jittering.
+
+For the physical test, `NavTest`'s target is the **ball** projected to the
+ground, with `arrival_radius ≈ 202 uu`, so it stops *just short* of the ball
+(no intentional contact). It renders a lime line to the target, a cyan marker,
+and a status string.
+
+### Physical RLBot GUI test for Stage 1
+
+1. Pull the latest `claude/sweet-mendel-b2c8sv` branch.
+2. In **RLBotGUI**, add bot from file → select `src/navtest.cfg` (name shows as
+   **NavTest**). Run it in **Free Play** (easiest: you can drag the ball around).
+3. Watch once the round is live.
+
+**Expected:** NavTest turns to face the ball, drives to it, slows down, and
+**stops just short of it** (a small gap, no big shove). Then **move the ball**
+somewhere else — it should turn toward the new spot and repeat, approaching
+cleanly from any angle. It should **not** circle the ball, drive away, or sit
+there spamming reverse. The overlay/console show `DRIVE → BRAKE → ARRIVED`,
+`heading_error` shrinking toward 0 as it lines up, and `dist` settling near 202.
+
+If that is what you see, Stage 1 is **physically VERIFIED**. If it orbits,
+reverses toward a ball behind it, overshoots and never settles, or drives to the
+wrong place, report the telemetry — that is a real bug to diagnose.
