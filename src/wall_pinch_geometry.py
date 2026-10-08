@@ -40,7 +40,11 @@ import field
 
 # --- Tuning constants (empirical unless geometric; each with a reason) ---
 NEAR_WALL_THRESHOLD = 900.0   # ball surface must be within this of the wall to pinch (empirical)
-MAX_PINCH_HEIGHT = 300.0      # ball center height ceiling for a low/ground wall pinch (empirical)
+# Highest ball-center a car ON THE GROUND can actually contact: the ball's bottom
+# (center_z - BALL_RADIUS) must be within the car's height. Above this the ball is
+# up the wall -> a wall/air pinch, which is a LATER stage, not this ground setup.
+# Geometry-derived (not a magic number); physical testing may adjust it.
+MAX_PINCH_HEIGHT = field.BALL_RADIUS + field.OCTANE_HEIGHT   # ~129 uu
 CORNER_Y_LIMIT = 4000.0       # beyond this |y| the side wall curves into the corner; flat model invalid
 APPROACH_STANDOFF = 400.0     # car sets up this far behind the ball along the approach line (empirical)
 TANGENT_VEL_THRESHOLD = 200.0 # above this along-wall ball speed, pinch the way it's already going (empirical)
