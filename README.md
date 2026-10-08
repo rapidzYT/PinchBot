@@ -14,7 +14,7 @@ gameplay features require a physical RLBot GUI test.
 |---|-----------|----------|--------------------|
 | 0 | RLBot foundation (loads, controls the car) | ✅ VERIFIED | ✅ VERIFIED (2026-10-08) — **foundation frozen** |
 | 1 | Generic navigation to a target | ✅ VERIFIED | ✅ VERIFIED (2026-10-08) — **navigation frozen** |
-| 2 | Wall-pinch geometry (SEARCH/SETUP) | 🔨 in progress | ⏳ pending |
+| 2 | Wall-pinch geometry (SEARCH/SETUP) | ✅ VERIFIED | ⏳ UNVERIFIED — GeomTest procedure below |
 | 3 | Wall geometry physically believable | — | — |
 | 4 | Car reaches the pinch setup point | — | — |
 | 5 | Pinch stabilization | — | — |
@@ -121,3 +121,40 @@ there spamming reverse. The overlay/console show `DRIVE → BRAKE → ARRIVED`,
 If that is what you see, Stage 1 is **physically VERIFIED**. If it orbits,
 reverses toward a ball behind it, overshoots and never settles, or drives to the
 wrong place, report the telemetry — that is a real bug to diagnose.
+
+## Stage 2 — wall-pinch geometry (GeomTest, render-only)
+
+`src/wall_pinch_geometry.py` computes a Kuxir side-wall pinch **setup** from the
+live ball state: selected wall, inward normal, along-wall tangent (signed to the
+pinch direction), contact point, the car's approach/setup point, approach
+direction, and the expected exit direction — with a full validation layer that
+**rejects** bad setups with an explicit reason (`ball_not_near_wall`,
+`ball_too_high`, `ball_near_corner`, `target_out_of_bounds`, …) and never emits a
+nonsense target. The relationship is **CAR → BALL → WALL** (car interior, wall
+far side). Constants come from `src/field.py` (verified field values).
+
+`GeomTest` (`src/geomtest.cfg`) is a **render-only inspection bot — it NEVER moves
+and never touches the ball.** It draws the computed setup and a status line.
+
+### Physical inspection test for Stage 2 (zero ball contact)
+
+1. Pull the branch. In **RLBotGUI**, add bot from file → `src/geomtest.cfg`
+   (shows as **GeomTest**). Run in **Free Play**.
+2. The car will **sit still**. Drag the **ball up against a side wall**.
+3. Look at the rendered overlay:
+   - **cyan** cube = ball, **white** line = the selected wall segment,
+   - **red** cube = contact point (should sit on the ball's *interior-facing* side),
+   - **lime** cube + line = the car's setup point and the approach vector
+     (should start further toward midfield and point diagonally into the ball
+     toward the wall),
+   - **yellow** line = expected exit direction (along the wall),
+   - status text shows `wall=RIGHT/LEFT`, `VIABLE`, and the gap/distance.
+
+**What to check:** the right wall is picked when the ball is on the +x side (left
+on −x); the contact/approach points and vectors sit sensibly (car→ball→wall), and
+the whole picture tracks the ball as you drag it. Move the ball to **midfield** →
+it should show `REJECT:ball_not_near_wall`; drag it into a **corner** →
+`REJECT:ball_near_corner`. The car must never move.
+
+If the drawn geometry matches the real field as you move the ball, Stage 2 is
+**physically verified** and we proceed to STABILIZE (driving to the setup point).
