@@ -113,6 +113,21 @@ def test_reject_ball_near_corner():
     assert s.reject_reason == "ball_near_corner"
 
 
+def test_reject_ball_leaving_wall():
+    # Ball near the right wall but rushing back toward midfield (-x) -> stale setup.
+    leaving = compute_wall_pinch_setup(Vec3(3950, 500, 93), Vec3(-900, 0, 0), team=0)
+    assert not leaving.viable and leaving.reject_reason == "ball_leaving_wall"
+    # Rolling ALONG the wall (tangential) is fine.
+    along = compute_wall_pinch_setup(Vec3(3950, 500, 93), Vec3(0, 900, 0), team=0)
+    assert along.viable
+    # Drifting slowly off the wall (below threshold) is still viable.
+    slow = compute_wall_pinch_setup(Vec3(3950, 500, 93), Vec3(-500, 0, 0), team=0)
+    assert slow.viable
+    # Moving INTO the wall is not "leaving".
+    into = compute_wall_pinch_setup(Vec3(3950, 500, 93), Vec3(500, 0, 0), team=0)
+    assert into.viable
+
+
 def test_reject_non_finite():
     s = compute_wall_pinch_setup(Vec3(float("nan"), 0, 93), Vec3(0, 0, 0), team=0)
     assert not s.viable

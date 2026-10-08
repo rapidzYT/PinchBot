@@ -48,6 +48,8 @@ MAX_PINCH_HEIGHT = field.BALL_RADIUS + field.OCTANE_HEIGHT   # ~129 uu
 CORNER_Y_LIMIT = 4000.0       # beyond this |y| the side wall curves into the corner; flat model invalid
 APPROACH_STANDOFF = 400.0     # car sets up this far behind the ball along the approach line (empirical)
 TANGENT_VEL_THRESHOLD = 200.0 # above this along-wall ball speed, pinch the way it's already going (empirical)
+BALL_LEAVE_WALL_SPEED = 800.0 # if the ball is moving off the wall toward midfield faster than this,
+                              # the setup is stale -> reject (empirical; see STABILIZE abort rule)
 MAX_TARGET_DIST = 2000.0      # sanity: the setup point must be near the ball, not thousands of uu away
 FIELD_MARGIN = 100.0          # keep computed targets this far inside the walls
 
@@ -138,6 +140,10 @@ def compute_wall_pinch_setup(ball_pos: Vec3, ball_vel: Vec3, team: int) -> Pinch
         reason = "ball_not_near_wall"
     elif ball_pos.z > MAX_PINCH_HEIGHT:
         reason = "ball_too_high"
+    elif ball_vel.dot(wall_normal) > BALL_LEAVE_WALL_SPEED:
+        # wall_normal points inward; a large component along it means the ball is
+        # rushing off the wall toward midfield -> the wall pinch setup is stale.
+        reason = "ball_leaving_wall"
     elif approach_len <= 1e-6:
         reason = "approach_dir_degenerate"
     elif not _in_bounds(approach_point):
