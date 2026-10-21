@@ -14,8 +14,8 @@ gameplay features require a physical RLBot GUI test.
 |---|-----------|----------|--------------------|
 | 0 | RLBot foundation (loads, controls the car) | ✅ VERIFIED | ✅ VERIFIED (2026-10-08) — **foundation frozen** |
 | 1 | Generic navigation to a target | ✅ VERIFIED | ✅ VERIFIED (2026-10-08) — **navigation frozen** |
-| 2 | Wall-pinch geometry (SEARCH/SETUP) | ✅ VERIFIED | ⏳ UNVERIFIED — GeomTest procedure below |
-| 3 | Wall geometry physically believable | — | — |
+| 2 | Wall-pinch geometry (SEARCH/SETUP) | ✅ VERIFIED | ✅ VERIFIED (2026-10-21) |
+| 3 | Wall geometry physically believable | ✅ VERIFIED | ✅ VERIFIED (2026-10-21) |
 | 4 | Car reaches the pinch setup point | — | — |
 | 5 | Pinch stabilization | — | — |
 | 6 | First pinch EXECUTE attempt | — | — |
