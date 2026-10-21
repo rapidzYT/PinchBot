@@ -60,14 +60,14 @@ def test_worked_example_right_wall():
 # --- CAR -> BALL -> WALL invariant -------------------------------------------
 
 def test_car_ball_wall_ordering_right():
-    s = compute_wall_pinch_setup(Vec3(3800, 500, 93), Vec3(0, 600, 0), team=0)
+    s = compute_wall_pinch_setup(Vec3(3950, 500, 93), Vec3(0, 600, 0), team=0)
     assert s.viable
     # interior-most is the car setup point, then the ball, then the wall at +4096
     assert s.approach_point.x < s.ball_pos.x < field.SIDE_WALL_X
 
 
 def test_car_ball_wall_ordering_left():
-    s = compute_wall_pinch_setup(Vec3(-3800, 500, 93), Vec3(0, -600, 0), team=1)
+    s = compute_wall_pinch_setup(Vec3(-3950, 500, 93), Vec3(0, -600, 0), team=1)
     assert s.viable
     assert s.wall == WALL_LEFT
     assert (s.wall_normal.x, s.wall_normal.y, s.wall_normal.z) == (1, 0, 0)   # inward from left wall

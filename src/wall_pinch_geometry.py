@@ -39,7 +39,11 @@ from util.vec import Vec3
 import field
 
 # --- Tuning constants (empirical unless geometric; each with a reason) ---
-NEAR_WALL_THRESHOLD = 900.0   # ball surface must be within this of the wall to pinch (empirical)
+# The ball must be essentially ON the wall to pinch, not merely in the vicinity.
+# This is the max gap (uu) between the ball SURFACE and the wall plane for a viable
+# setup. Tight on purpose: at 150 the ball center is within ~240 uu of the wall.
+# Lower it for stricter (ball touching the wall), raise it to be more forgiving.
+NEAR_WALL_THRESHOLD = 150.0   # empirical; physically tuned
 # Max ball-center height (uu) for a ground-based side-wall pinch.
 # NOTE: an earlier geometry-derived guess (~129 = ball radius + car height) was WRONG
 # and physically rejected valid low pinches: a ball resting FLUSH against the side
@@ -47,7 +51,7 @@ NEAR_WALL_THRESHOLD = 900.0   # ball surface must be within this of the wall to 
 # (observed ~150-250 uu in-game), and that band is the ideal Kuxir height. So this is
 # an EMPIRICAL ceiling, tuned from in-game z readings. Balls clearly up the wall
 # (z well above this) are wall/air reads handled by a later stage.
-MAX_PINCH_HEIGHT = 300.0   # empirical; physically tuned
+MAX_PINCH_HEIGHT = 500.0   # empirical; physically tuned
 CORNER_Y_LIMIT = 4000.0       # beyond this |y| the side wall curves into the corner; flat model invalid
 APPROACH_STANDOFF = 400.0     # car sets up this far behind the ball along the approach line (empirical)
 TANGENT_VEL_THRESHOLD = 200.0 # above this along-wall ball speed, pinch the way it's already going (empirical)
