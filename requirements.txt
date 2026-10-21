@@ -1,0 +1,5 @@
+# PinchBot dependencies.
+# Pinned to the exact framework version this project targets (RLBot v4 API:
+# BaseAgent / SimpleControllerState / GameTickPacket). Verified against the
+# installed package during development.
+rlbot==1.68.0
