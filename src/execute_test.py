@@ -35,7 +35,7 @@ EXECUTE_GATE_RADIUS = 160.0       # car center distance from approach point (uu)
 EXECUTE_ALIGN_ANGLE = 0.35        # ~20 degrees from approach direction
 CONTACT_CENTER_OFFSET = geom.field.BALL_RADIUS + geom.field.CAR_HALF_LENGTH
 CONTACT_EVENT_RADIUS = 65.0       # car center distance from contact-center line (uu)
-EXECUTE_MAX_SECONDS = 0.45        # safety bound for one contact attempt
+EXECUTE_MAX_SECONDS = 0.75        # enough time to accelerate from a stopped setup
 VERIFY_SECONDS = 0.30             # allow the ball velocity to settle
 RECOVERY_SECONDS = 0.80            # avoid immediately repeating a stale attempt
 STABILIZE_TIMEOUT_SECONDS = 8.0    # never wait forever for a transient setup
@@ -83,6 +83,7 @@ class ExecuteTest(BaseAgent):
         self.last_telemetry = {}
         self._telemetry_time = 0.0
         self._last_wall_velocity = float("nan")
+        self._last_ball_z = float("nan")
         self._prepositioned = False
         self.logger.info(
             f"ExecuteTest initialized (name={self.name!r}, index={self.index}, "
@@ -113,6 +114,7 @@ class ExecuteTest(BaseAgent):
 
         ball_pos = Vec3(packet.game_ball.physics.location)
         ball_vel = Vec3(packet.game_ball.physics.velocity)
+        self._last_ball_z = ball_pos.z
         setup = geom.compute_wall_pinch_setup(ball_pos, ball_vel, self.team)
         self._last_wall_velocity = (
             ball_vel.dot(setup.wall_normal) if setup.wall else float("nan")
@@ -375,6 +377,7 @@ class ExecuteTest(BaseAgent):
             "setup_reason": reason,
             "ball_wall_gap": float("nan") if setup is None else setup.ball_wall_gap,
             "wall_velocity": self._last_wall_velocity,
+            "ball_z": self._last_ball_z,
             "target_distance": float("nan") if setup is None else setup.target_distance,
             "heading_error": float("nan"),
             "execute_distance": float("nan"),
@@ -391,6 +394,7 @@ class ExecuteTest(BaseAgent):
             "setup_reason": setup.reject_reason,
             "ball_wall_gap": setup.ball_wall_gap,
             "wall_velocity": self._last_wall_velocity,
+            "ball_z": self._last_ball_z,
             "result": self.result,
             "prepositioned": self._prepositioned,
             "ball_speed": ball_vel.flat().length(),
@@ -471,6 +475,7 @@ class ExecuteTest(BaseAgent):
             f"viable={t.get('setup_viable', False)} reason={t.get('setup_reason', '') or '-'} "
             f"gap={t.get('ball_wall_gap', float('nan')):.0f} "
             f"wall_vel={t.get('wall_velocity', float('nan')):.0f} "
+            f"ball_z={t.get('ball_z', float('nan')):.0f} "
             f"dist={t.get('target_distance', float('nan')):.0f} "
             f"he_deg={math.degrees(t.get('heading_error', float('nan'))):.0f} "
             f"ready={t.get('execute_ready', False)} "

@@ -237,3 +237,27 @@ def test_execute_controls_are_finite_and_bounded():
     assert math.isfinite(out.throttle)
     assert math.isfinite(out.steer)
 
+
+def test_execute_pulse_does_not_expire_before_stationary_car_can_reach_line():
+    setup = geom.compute_wall_pinch_setup(
+        geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, 0.0, 0.0), team=0
+    )
+    yaw = math.atan2(setup.approach_direction.y, setup.approach_direction.x)
+    bot = make_bot()
+    bot.get_output(
+        make_wall_packet(
+            seconds_elapsed=0.0,
+            car_location=(setup.approach_point.x, setup.approach_point.y, setup.approach_point.z),
+            car_rotation=(0.0, yaw, 0.0),
+        )
+    )
+    out = bot.get_output(
+        make_wall_packet(
+            seconds_elapsed=0.50,
+            car_location=(setup.approach_point.x, setup.approach_point.y, setup.approach_point.z),
+            car_rotation=(0.0, yaw, 0.0),
+        )
+    )
+    assert bot.state == STATE_EXECUTE
+    assert out.throttle == pytest.approx(1.0)
+
