@@ -17,6 +17,7 @@ def make_packet(
     car_velocity=(0.0, 0.0, 0.0),
     car_rotation=(0.0, 0.0, 0.0),   # (pitch, yaw, roll) in radians
     ball_location=(0.0, 0.0, 92.75),
+    ball_velocity=(0.0, 0.0, 0.0),
     car_name: str = "PinchBot",
     car_team: int = 0,
     has_wheel_contact: bool = True,
@@ -36,6 +37,7 @@ def make_packet(
 
     ball = packet.game_ball
     ball.physics.location.x, ball.physics.location.y, ball.physics.location.z = ball_location
+    ball.physics.velocity.x, ball.physics.velocity.y, ball.physics.velocity.z = ball_velocity
 
     info = packet.game_info
     info.seconds_elapsed = seconds_elapsed

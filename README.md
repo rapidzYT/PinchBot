@@ -16,8 +16,8 @@ gameplay features require a physical RLBot GUI test.
 | 1 | Generic navigation to a target | ✅ VERIFIED | ✅ VERIFIED (2026-10-08) — **navigation frozen** |
 | 2 | Wall-pinch geometry (SEARCH/SETUP) | ✅ VERIFIED | ✅ VERIFIED (2026-10-21) |
 | 3 | Wall geometry physically believable | ✅ VERIFIED | ✅ VERIFIED (2026-10-21) |
-| 4 | Car reaches the pinch setup point | — | — |
-| 5 | Pinch stabilization | — | — |
+| 4 | Car reaches the pinch setup point (`StabilizeTest`) | ✅ VERIFIED (software) | — |
+| 5 | Pinch stabilization (`SEARCH → STABILIZE → HOLD`, no contact) | ✅ VERIFIED (software) | — |
 | 6 | First pinch EXECUTE attempt | — | — |
 | 7 | Pinch VERIFY | — | — |
 | 8 | RECOVER / retry | — | — |
@@ -32,6 +32,10 @@ Legend: ✅ verified · ⏳ pending · — not started. Later: ground (10), ceil
 PinchBot/
 ├── src/
 │   ├── bot.py            # the bot (Stage 0 foundation; BaseAgent subclass)
+│   ├── navtest.py        # Stage 1 generic navigation test bot
+│   ├── geomtest.py       # Stage 2 render-only geometry inspection bot
+│   ├── stabilize_test.py # Stage 4/5 setup stabilization bot; no contact
+│   ├── stabilize_test.cfg
 │   ├── pinch_bot.cfg     # RLBot bot config (add THIS in RLBotGUI)
 │   └── appearance.cfg    # loadout
 ├── tests/                # software validation (pytest)
@@ -158,3 +162,45 @@ it should show `REJECT:ball_not_near_wall`; drag it into a **corner** →
 
 If the drawn geometry matches the real field as you move the ball, Stage 2 is
 **physically verified** and we proceed to STABILIZE (driving to the setup point).
+
+## Stage 4/5 — setup stabilization (StabilizeTest, zero ball contact)
+
+`StabilizeTest` (`src/stabilize_test.cfg`) is the first live bot that combines
+the wall-pinch geometry with navigation. For each tick it recomputes the setup
+from the ball's current position and velocity, then drives to the lime
+`approach_point` and holds there. It never targets the contact point, never
+jumps or boosts, and has no `EXECUTE` path.
+
+The state labels are observable in the overlay and telemetry:
+
+* `WAIT` — round is not active; hold neutral.
+* `SEARCH` — no viable wall setup; hold neutral and report the geometry reason.
+* `STABILIZE` — navigate to the current setup point while reporting distance,
+  heading error, velocity toward target, and ball-wall gap.
+* `HOLD` — the navigation controller reports arrival inside the setup radius;
+  keep neutral controls.
+* `RECOVER` — repeated distance/heading regression or a timeout; hold neutral
+  briefly, then regenerate the setup. A timer cannot advance to execution.
+
+### Physical RLBot GUI test for Stage 4/5
+
+1. In RLBotGUI, add bot from file → select `src/stabilize_test.cfg` (name shows
+   as **StabilizeTest**). Run it in Free Play and press **Page Up** to enable
+   rendering.
+2. Place the ball flush against the middle of a side wall, away from the
+   rounded corner. A ball around the observed low wall height is the intended
+   setup; do not start with the ball high on the wall.
+3. Watch the lime setup marker and the cyan car-to-target line.
+
+**Expected:** the car turns and drives to the lime approach marker, slows down,
+and holds there without touching the ball. The marker remains on the interior
+side of the ball, with the relationship **CAR → BALL → WALL**. Telemetry should
+show `STABILIZE` with distance trending down, then `HOLD` with distance within
+about 140 uu and neutral controls. Move the ball along the wall: the bot should
+regenerate and re-stabilize. Move it to midfield or into a corner: the bot
+should stop and show `SEARCH` with `ball_not_near_wall` or `ball_near_corner`.
+
+This checkpoint is **not physically verified** until those observations are
+confirmed in Rocket League. Paste several `[StabilizeTest]` telemetry lines,
+including the transition to `HOLD` and any rejection/recovery behavior, before
+marking it physically verified.
