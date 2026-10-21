@@ -75,10 +75,11 @@ STATE_RECOVER = "RECOVER"
 class ExecuteTest(BaseAgent):
     """Attempt one conservative wall contact, then measure its result."""
 
-    # Subclasses can reuse the live SEARCH/SETUP/STABILIZE pipeline while
-    # keeping intentional contact disabled until setup reliability is proven.
+    # Subclasses can reuse the live setup pipeline while selecting whether to
+    # create setups and whether their tangent direction is goal-directed.
     ALLOW_EXECUTE = True
     CREATE_SETUP = False
+    GOAL_DIRECTED = False
 
     def initialize_agent(self):
         self.tick = 0
@@ -139,7 +140,7 @@ class ExecuteTest(BaseAgent):
         ball_pos = Vec3(packet.game_ball.physics.location)
         ball_vel = Vec3(packet.game_ball.physics.velocity)
         self._last_ball_z = ball_pos.z
-        setup = geom.compute_wall_pinch_setup(ball_pos, ball_vel, self.team)
+        setup = self._compute_setup(ball_pos, ball_vel)
         self._last_wall_velocity = (
             ball_vel.dot(setup.wall_normal) if setup.wall else float("nan")
         )
@@ -181,7 +182,11 @@ class ExecuteTest(BaseAgent):
             self._telemetry()
             return neutral
 
-        if self.CREATE_SETUP and not setup.viable:
+        if (
+            self.CREATE_SETUP
+            and self.state != STATE_EXECUTE
+            and not setup.viable
+        ):
             if (
                 self._creation_cooldown_until is not None
                 and now < self._creation_cooldown_until
@@ -482,12 +487,22 @@ class ExecuteTest(BaseAgent):
             return setup.approach_point, False
 
         predicted_ball = Vec3(predicted_x, predicted_y, predicted_z)
-        predicted_setup = geom.compute_wall_pinch_setup(
-            predicted_ball, ball_vel, self.team
-        )
+        predicted_setup = self._compute_setup(predicted_ball, ball_vel)
         if not predicted_setup.viable:
             return setup.approach_point, False
         return predicted_setup.approach_point, True
+
+    def _compute_setup(self, ball_pos, ball_vel):
+        """Compute geometry, optionally forcing the exit toward our goal."""
+        if not self.GOAL_DIRECTED:
+            return geom.compute_wall_pinch_setup(ball_pos, ball_vel, self.team)
+        attack_y = geom.field.attack_sign(self.team)
+        directed_velocity = Vec3(
+            ball_vel.x,
+            attack_y * max(abs(ball_vel.y), geom.TANGENT_VEL_THRESHOLD + 1.0),
+            ball_vel.z,
+        )
+        return geom.compute_wall_pinch_setup(ball_pos, directed_velocity, self.team)
 
     def _execute_gate(self, car, setup):
         car_loc = Vec3(car.physics.location)

@@ -93,18 +93,19 @@ If that is what you see, Stage 0 is **physically VERIFIED**. If it drives the
 wrong way, never moves, or jitters, report exactly what happened (and the
 telemetry lines) — that is a real bug to diagnose, not to tune around.
 
-## Current main bot — integrated setup-only `PinchBot`
+## Current main bot — goal-directed `PinchBot`
 
 `src/pinch_bot.cfg` now loads `src/pinchbot.py`, which combines the live
 wall-pinch geometry/navigation stages into the bot named **PinchBot**. It can
 choose a side wall, drive behind a midfield ball, push the ball toward that
 wall, then switch to bounded predicted pre-positioning and stabilize at the
-pinch setup point. Boost is used on long aligned travel and on a controlled,
-aligned push while plenty of wall distance remains. The bot latches the
-wall-exit direction for each setup attempt so a small tangent-velocity sign
+pinch setup point. It selects the team's attack direction along the wall
+(blue: +Y, orange: −Y), then enables one bounded `EXECUTE` contact pulse and
+`VERIFY` measurement. Boost is used on long aligned travel and on a
+controlled, aligned push while plenty of wall distance remains. The bot latches
+the wall-exit direction for each setup attempt so a small tangent-velocity sign
 change cannot jerk the target underneath the car, and pauses briefly before
-recreating a setup it has just lost. The Kuxir pinch execution remains disabled
-until this setup-making behavior is physically reliable.
+recreating a setup it has just lost.
 
 ### Physical test for the current main bot
 
@@ -114,14 +115,15 @@ until this setup-making behavior is physically reliable.
 
 **Expected:** PinchBot shows `CREATE_SETUP`, approaches from the interior side,
 and pushes the ball toward its selected side wall. Once the ball is near the
-wall, it transitions through `SETUP`/`STABILIZE` and holds the lime setup point.
+wall, it transitions through `SETUP`/`STABILIZE`, aligns with the lime setup
+point, and attempts `EXECUTE` toward the goal-directed contact line.
 Telemetry is prefixed `[PinchBot]`; `boost=True` is expected during a long,
 aligned approach or push, and `latch=True` should appear during a viable setup.
 During close ball control, `slide=False` is expected.
-There should be no `EXECUTE` state. If the ball rolls away after reaching the
-wall, expect a short `setup_lost_recovery` pause before the bot tries another
-setup. This is the physical gate before the Kuxir pinch is merged into the main
-bot.
+After contact, expect `VERIFY` followed by a conservative result such as
+`POSSIBLE_PINCH`, `NORMAL_CONTACT`, `SOFT_CONTACT`, or `MISS`. If the ball rolls
+away before contact, expect a short `setup_lost_recovery` pause before another
+setup attempt.
 
 ## Stage 1 — generic navigation (NavTest)
 

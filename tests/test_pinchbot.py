@@ -1,4 +1,4 @@
-"""Software checks for the integrated PinchBot setup-only controller."""
+"""Software checks for the integrated goal-directed PinchBot controller."""
 
 import math
 from pathlib import Path
@@ -41,11 +41,12 @@ def test_main_cfg_loads_integrated_setup_bot():
     bot = cls("PinchBot", 0, 0)
     bot.initialize_agent()
     assert isinstance(bot, PinchBot)
-    assert bot.ALLOW_EXECUTE is False
+    assert bot.ALLOW_EXECUTE is True
+    assert bot.GOAL_DIRECTED is True
     assert isinstance(bot.get_output(make_wall_packet()), SimpleControllerState)
 
 
-def test_integrated_bot_holds_ready_setup_without_contact():
+def test_integrated_bot_executes_goal_directed_ready_setup():
     setup = geom.compute_wall_pinch_setup(
         geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, 0.0, 0.0), team=0
     )
@@ -57,12 +58,13 @@ def test_integrated_bot_holds_ready_setup_without_contact():
             car_rotation=(0.0, yaw, 0.0),
         )
     )
-    assert bot.state == "STABILIZE"
+    assert bot.state == "EXECUTE"
     assert bot.last_telemetry["setup_viable"] is True
     assert bot.last_telemetry["execute_ready"] is True
-    assert bot.execute_target is None
-    assert out.throttle == pytest.approx(0.0)
-    assert out.steer == pytest.approx(0.0)
+    assert bot.execute_target is not None
+    assert out.throttle == pytest.approx(1.0)
+    assert out.boost is False
+    assert abs(out.steer) < 1e-5
 
 
 def test_integrated_bot_creates_setup_from_midfield():
@@ -120,12 +122,30 @@ def test_integrated_bot_latches_wall_direction_during_one_setup_attempt():
             car_rotation=(0.0, yaw, 0.0),
         )
     )
-    assert bot.state == "STABILIZE"
+    assert bot.state == "EXECUTE"
     assert bot.last_target.y == pytest.approx(first_target.y)
     assert bot.last_telemetry["tangent_latched"] is True
 
 
-def test_integrated_bot_pauses_before_recreating_a_lost_setup():
+def test_integrated_bot_forces_pinch_exit_toward_attack_goal():
+    bot = make_bot()
+    setup = bot._compute_setup(
+        geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, -1500.0, 0.0)
+    )
+    assert setup.viable is True
+    assert setup.expected_pinch_direction.y == pytest.approx(1.0)
+    assert setup.approach_direction.y > 0.0
+
+    orange_bot = PinchBot("PinchBot", 1, 0)
+    orange_bot.initialize_agent()
+    orange_setup = orange_bot._compute_setup(
+        geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, 1500.0, 0.0)
+    )
+    assert orange_setup.expected_pinch_direction.y == pytest.approx(-1.0)
+    assert orange_setup.approach_direction.y < 0.0
+
+
+def test_integrated_bot_does_not_interrupt_an_active_execution():
     setup = geom.compute_wall_pinch_setup(
         geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, 0.0, 0.0), team=0
     )
@@ -146,9 +166,9 @@ def test_integrated_bot_pauses_before_recreating_a_lost_setup():
             car_rotation=(0.0, yaw, 0.0),
         )
     )
-    assert bot.state == "SEARCH"
-    assert bot.last_telemetry["setup_reason"] == "setup_lost_recovery"
-    assert out.throttle == pytest.approx(0.0)
+    assert bot.state == "EXECUTE"
+    assert bot.last_telemetry["state"] == "EXECUTE"
+    assert out.throttle == pytest.approx(1.0)
 
 
 def test_integrated_bot_disables_powerslide_near_moving_ball():
