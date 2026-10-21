@@ -42,7 +42,10 @@ STABILIZE_TIMEOUT_SECONDS = 8.0    # never wait forever for a transient setup
 
 # Early setup uses the same proven rule as StabilizeTest, so ExecuteTest gets
 # moving before a transient wall-contact window opens.
-PREPARE_MAX_WALL_GAP = 1000.0
+# Start moving toward the setup while the ball is still approaching the wall.
+# The previous 1000-uu window was too late for the fast approaches observed in
+# the first-contact run (the ball could cover that gap before the car arrived).
+PREPARE_MAX_WALL_GAP = 2500.0  # empirical early-warning band (uu)
 PREPARE_MIN_INWARD_SPEED = 100.0
 
 RESULT_UNVERIFIED = "UNVERIFIED"

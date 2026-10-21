@@ -66,6 +66,19 @@ def test_far_or_invalid_setup_never_drives_at_ball():
     assert bot.last_telemetry["setup_reason"] == "ball_not_near_wall"
 
 
+def test_fast_wall_approach_starts_prepositioning_early():
+    bot = make_bot()
+    out = bot.get_output(
+        make_wall_packet(
+            ball_location=(2203.25, 500.0, 200.0),  # approximately 1800 uu from right wall
+            ball_velocity=(800.0, 0.0, 0.0),        # moving toward the right wall
+        )
+    )
+    assert bot.state == STATE_SETUP
+    assert out.throttle != pytest.approx(0.0)
+    assert bot.last_telemetry["setup_reason"] == "ball_not_near_wall"
+
+
 def test_viable_aligned_setup_enters_execute():
     setup = geom.compute_wall_pinch_setup(
         geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, 0.0, 0.0), team=0
