@@ -22,6 +22,7 @@ from stabilize_test import (
     STATE_HOLD,
     STATE_RECOVER,
     STATE_SEARCH,
+    STATE_SETUP,
     STATE_STABILIZE,
     STATE_WAIT,
 )
@@ -90,6 +91,39 @@ def test_viable_setup_drives_to_approach_point_not_contact_point():
     )
     assert bot.last_telemetry["setup_viable"] is True
     assert bot.last_telemetry["ball_wall_gap"] == pytest.approx(103.25, abs=0.01)
+
+
+def test_prepositions_for_ball_moving_into_wall_before_viable_gate():
+    # Right-wall ball: +x velocity moves it toward x=+4096.  The strict
+    # geometry gate still rejects this 400-uu gap, but SETUP may safely use the
+    # finite approach point to start closing the distance early.
+    ball_x = 4096.0 - 92.75 - 400.0
+    bot = make_bot(team=0)
+    out = bot.get_output(
+        viable_packet(
+            ball_location=(ball_x, 500.0, 200.0),
+            ball_velocity=(300.0, 0.0, 0.0),
+        )
+    )
+    assert bot.state == STATE_SETUP
+    assert out.throttle == pytest.approx(1.0)
+    assert bot.last_telemetry["setup_viable"] is False
+    assert bot.last_telemetry["setup_reason"] == "ball_not_near_wall"
+    assert bot.last_telemetry["wall_velocity"] == pytest.approx(-300.0)
+
+
+def test_stationary_off_wall_ball_is_not_prepositioned():
+    ball_x = 4096.0 - 92.75 - 400.0
+    bot = make_bot(team=0)
+    out = bot.get_output(
+        viable_packet(
+            ball_location=(ball_x, 500.0, 200.0),
+            ball_velocity=(0.0, 0.0, 0.0),
+        )
+    )
+    assert bot.state == STATE_SEARCH
+    assert out.throttle == pytest.approx(0.0)
+    assert bot.last_telemetry["setup_reason"] == "ball_not_near_wall"
 
 
 def test_arrived_at_setup_holds_neutral_without_contact():

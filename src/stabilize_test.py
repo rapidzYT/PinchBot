@@ -4,7 +4,7 @@ StabilizeTest -- Checkpoint 4/5 wall-pinch setup bot.
 This is deliberately a separate bot from the frozen foundation, navigation,
 and geometry inspection bots.  It exercises the first live state-machine layer:
 
-    SEARCH -> SETUP/STABILIZE -> HOLD
+    SEARCH -> SETUP -> STABILIZE -> HOLD
 
 The bot drives to the geometry module's ``approach_point`` and stops there.  It
 does not drive at the contact point, does not jump, does not boost, and has no
@@ -34,6 +34,13 @@ TELEMETRY_EVERY_TICKS = 30
 # a substantial geometric gap before the car can reach the contact surface.
 SETUP_ARRIVAL_RADIUS = 140.0  # empirical ground-navigation arrival band (uu)
 
+# Pre-position while a ball is demonstrably moving INTO the wall.  This is not
+# a pinch-validity relaxation: the bot remains in SETUP until the strict
+# geometry gate is satisfied.  The purpose is to remove the avoidable delay
+# between seeing an approaching ball and beginning the ground drive.
+PREPARE_MAX_WALL_GAP = 1000.0  # empirical early-warning band (uu)
+PREPARE_MIN_INWARD_SPEED = 100.0  # uu/s; reject stationary/off-wall balls
+
 # Progress checks use game time, not callback count, so they remain meaningful
 # at the configured 120 Hz tick rate and if the framework skips callbacks.
 PROGRESS_SAMPLE_SECONDS = 0.20
@@ -48,6 +55,7 @@ TARGET_SHIFT_RESET_DISTANCE = 250.0 # a materially new target gets a fresh trend
 
 STATE_WAIT = "WAIT"
 STATE_SEARCH = "SEARCH"
+STATE_SETUP = "SETUP"
 STATE_STABILIZE = "STABILIZE"
 STATE_HOLD = "HOLD"
 STATE_RECOVER = "RECOVER"
@@ -69,6 +77,7 @@ class StabilizeTest(BaseAgent):
         self.last_telemetry = {}
         self._telemetry_time = 0.0
         self._recovery_reason = ""
+        self._last_wall_velocity = float("nan")
         self.logger.info(
             f"StabilizeTest initialized (name={self.name!r}, index={self.index}, "
             f"team={self.team}). SETUP/STABILIZE only -- no ball contact."
@@ -98,6 +107,9 @@ class StabilizeTest(BaseAgent):
         ball_pos = Vec3(packet.game_ball.physics.location)
         ball_vel = Vec3(packet.game_ball.physics.velocity)
         setup = geom.compute_wall_pinch_setup(ball_pos, ball_vel, self.team)
+        self._last_wall_velocity = (
+            ball_vel.dot(setup.wall_normal) if setup.wall else float("nan")
+        )
 
         if self.state == STATE_RECOVER:
             if self.recovery_until is not None and now < self.recovery_until:
@@ -108,7 +120,8 @@ class StabilizeTest(BaseAgent):
             self._reset_tracking()
             self.state = STATE_SEARCH
 
-        if not setup.viable:
+        preparing = self._should_prepare(setup)
+        if not setup.viable and not preparing:
             self._reset_tracking()
             self.state = STATE_SEARCH
             self._record_rejected(setup, setup.reject_reason)
@@ -134,7 +147,7 @@ class StabilizeTest(BaseAgent):
             self.distance_bad_streak = 0
             self.heading_bad_streak = 0
 
-        self.state = STATE_STABILIZE
+        self.state = STATE_STABILIZE if setup.viable else STATE_SETUP
         controls, nav_telemetry = navigation.drive_to_target(
             car, setup.approach_point, arrival_radius=SETUP_ARRIVAL_RADIUS
         )
@@ -155,13 +168,37 @@ class StabilizeTest(BaseAgent):
             return neutral
 
         if nav_telemetry["state"] == navigation.NAV_ARRIVED:
-            self.state = STATE_HOLD
+            if setup.viable:
+                self.state = STATE_HOLD
+            else:
+                # Hold the safe pre-position while waiting for the strict
+                # near-wall geometry gate to become valid.
+                self.state = STATE_SETUP
             controls = SimpleControllerState()
 
         self._record_telemetry(setup, nav_telemetry)
         self._render(car, setup, nav_telemetry)
         self._telemetry()
         return controls
+
+    def _should_prepare(self, setup) -> bool:
+        """Whether a rejected setup is a safe, early pre-position opportunity."""
+        if setup.viable or setup.reject_reason != "ball_not_near_wall":
+            return False
+        if setup.ball_wall_gap > PREPARE_MAX_WALL_GAP:
+            return False
+        if self._last_wall_velocity > -PREPARE_MIN_INWARD_SPEED:
+            return False
+        # The geometry module has already computed this point; repeat the
+        # sanity checks here because this branch intentionally uses a setup
+        # before the near-wall validity gate passes.
+        return (
+            math.isfinite(setup.target_distance)
+            and setup.target_distance <= geom.MAX_TARGET_DIST
+            and math.isfinite(setup.approach_point.x)
+            and math.isfinite(setup.approach_point.y)
+            and math.isfinite(setup.approach_point.z)
+        )
 
     def _reset_tracking(self):
         self.tracking_since = None
@@ -223,6 +260,7 @@ class StabilizeTest(BaseAgent):
             "velocity_toward_target": float("nan"),
             "progress_bad_streak": self.distance_bad_streak,
             "heading_bad_streak": self.heading_bad_streak,
+            "wall_velocity": self._last_wall_velocity,
         }
 
     def _record_telemetry(self, setup, nav_telemetry):
@@ -237,6 +275,7 @@ class StabilizeTest(BaseAgent):
             "setup_target_distance": setup.target_distance,
             "progress_bad_streak": self.distance_bad_streak,
             "heading_bad_streak": self.heading_bad_streak,
+            "wall_velocity": self._last_wall_velocity,
             "stabilize_elapsed": (
                 0.0 if self.tracking_since is None
                 else max(0.0, self._current_time - self.tracking_since)
@@ -279,9 +318,12 @@ class StabilizeTest(BaseAgent):
                     f" dist={nav_telemetry['target_distance']:.0f}"
                     f" he={math.degrees(nav_telemetry['heading_error']):.0f}deg"
                 )
+        elif self.state == STATE_SETUP:
+            status += f" PREPARE wall={setup.wall} gap={setup.ball_wall_gap:.0f}"
         else:
             status += f" REJECT:{setup.reject_reason} gap={setup.ball_wall_gap:.0f}"
-        r.draw_string_2d(20, 20, 1, 1, status, r.white() if setup and setup.viable else r.red())
+        status_color = r.white() if setup and setup.viable else r.yellow() if self.state == STATE_SETUP else r.red()
+        r.draw_string_2d(20, 20, 1, 1, status, status_color)
         r.end_rendering()
 
     @property
@@ -297,6 +339,7 @@ class StabilizeTest(BaseAgent):
             f"[StabilizeTest] tick={self.tick} state={t.get('state', self.state)} "
             f"viable={t.get('setup_viable', False)} reason={t.get('setup_reason', '') or '-'} "
             f"gap={t.get('ball_wall_gap', float('nan')):.0f} "
+            f"wall_vel={t.get('wall_velocity', float('nan')):.0f} "
             f"dist={t.get('target_distance', float('nan')):.0f} "
             f"he_deg={math.degrees(t.get('heading_error', float('nan'))):.0f} "
             f"vel_to_tgt={t.get('velocity_toward_target', float('nan')):.0f} "

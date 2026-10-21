@@ -174,8 +174,12 @@ jumps or boosts, and has no `EXECUTE` path.
 The state labels are observable in the overlay and telemetry:
 
 * `WAIT` — round is not active; hold neutral.
-* `SEARCH` — no viable wall setup; hold neutral and report the geometry reason.
-* `STABILIZE` — navigate to the current setup point while reporting distance,
+* `SEARCH` — no viable wall setup or no safe early approach; hold neutral and
+  report the geometry reason.
+* `SETUP` — the ball is within the early-warning band and moving toward the
+  wall, so start pre-positioning at the safe approach point before the strict
+  near-wall gate becomes viable. This is still zero-contact setup motion.
+* `STABILIZE` — navigate to the current viable setup point while reporting distance,
   heading error, velocity toward target, and ball-wall gap.
 * `HOLD` — the navigation controller reports arrival inside the setup radius;
   keep neutral controls.
@@ -202,5 +206,5 @@ should stop and show `SEARCH` with `ball_not_near_wall` or `ball_near_corner`.
 
 This checkpoint is **not physically verified** until those observations are
 confirmed in Rocket League. Paste several `[StabilizeTest]` telemetry lines,
-including the transition to `HOLD` and any rejection/recovery behavior, before
-marking it physically verified.
+including `wall_vel` during `SETUP`, the transition to `HOLD`, and any
+rejection/recovery behavior, before marking it physically verified.
