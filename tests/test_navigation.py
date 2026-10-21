@@ -18,14 +18,12 @@ import math
 import pytest
 from rlbot.agents.base_agent import SimpleControllerState
 
-import navigation
 from navigation import (
     drive_to_target,
     MAX_DRIVE_SPEED,
     BRAKE_DECEL,
     DEFAULT_ARRIVAL_RADIUS,
     HOLD_SPEED,
-    REORIENT_SPEED,
     NAV_DRIVE,
     NAV_TURN,
     NAV_BRAKE,

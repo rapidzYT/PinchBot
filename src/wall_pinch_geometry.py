@@ -107,11 +107,9 @@ def compute_wall_pinch_setup(ball_pos: Vec3, ball_vel: Vec3, team: int) -> Pinch
     # --- select the nearer side wall ---
     if ball_pos.x >= 0.0:
         wall = WALL_RIGHT
-        wall_x = field.SIDE_WALL_X
         wall_normal = Vec3(-1.0, 0.0, 0.0)     # inward from the right wall
     else:
         wall = WALL_LEFT
-        wall_x = -field.SIDE_WALL_X
         wall_normal = Vec3(1.0, 0.0, 0.0)      # inward from the left wall
 
     ball_wall_gap = (field.SIDE_WALL_X - abs(ball_pos.x)) - field.BALL_RADIUS

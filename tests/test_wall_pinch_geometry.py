@@ -15,7 +15,6 @@ import field
 from util.vec import Vec3
 from wall_pinch_geometry import (
     compute_wall_pinch_setup,
-    PinchSetup,
     WALL_RIGHT,
     WALL_LEFT,
     NEAR_WALL_THRESHOLD,
