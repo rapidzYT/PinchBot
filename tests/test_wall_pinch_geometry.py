@@ -107,6 +107,14 @@ def test_reject_ball_too_high():
     assert s.reject_reason == "ball_too_high"
 
 
+def test_viable_at_wall_resting_height():
+    # A ball flush against the wall sits well above flat-ground height (the wall-floor
+    # corner lifts it ~150-250 uu); that is the ideal Kuxir height and must be VIABLE.
+    for z in (93, 150, 200, 250):
+        s = compute_wall_pinch_setup(Vec3(3993, 972, z), Vec3(0, 700, 0), team=0)
+        assert s.viable, f"ball at wall height z={z} should be viable, got {s.reject_reason}"
+
+
 def test_reject_ball_near_corner():
     s = compute_wall_pinch_setup(Vec3(3900, CORNER_Y_LIMIT + 100, 93), Vec3(0, 300, 0), team=0)
     assert not s.viable
