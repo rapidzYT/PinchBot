@@ -43,6 +43,7 @@ CREATE_SETUP_ARRIVAL_RADIUS = 120.0
 CREATE_SETUP_STANDOFF = 35.0       # keep the first setup push deliberate
 CREATE_SETUP_PUSH_BOOST_MIN_GAP = 1800.0  # only boost while a long wall push remains
 CREATE_SETUP_RECOVERY_SECONDS = 1.0       # let a lost setup clear before retrying
+CREATE_SETUP_NO_SLIDE_DISTANCE = 700.0    # keep close ball control grounded
 
 # Early setup uses the same proven rule as StabilizeTest, so ExecuteTest gets
 # moving before a transient wall-contact window opens.
@@ -348,6 +349,14 @@ class ExecuteTest(BaseAgent):
             controls, nav = navigation.drive_to_target(
                 car, target, arrival_radius=CREATE_SETUP_ARRIVAL_RADIUS
             )
+            # The generic navigator uses handbrake to turn tightly when a
+            # target is badly misaligned.  That is useful for open-field
+            # travel, but dangerous here: the target is attached to a moving
+            # ball, so sliding around it turns a controlled push into a spin.
+            # Brake and re-align normally once the car is close to the ball.
+            close_control = target_distance <= CREATE_SETUP_NO_SLIDE_DISTANCE
+            if close_control:
+                controls.handbrake = False
             self._maybe_enable_creation_boost(car, controls, nav)
             nav = dict(nav)
             nav.update({
@@ -359,6 +368,7 @@ class ExecuteTest(BaseAgent):
                 "creation_wall_heading_error": wall_heading_error,
                 "execute_distance": float("nan"),
                 "execute_ready": False,
+                "creation_slide_guard": close_control,
             })
             return controls, nav
 
@@ -386,6 +396,8 @@ class ExecuteTest(BaseAgent):
             "execute_distance": float("nan"),
             "execute_ready": False,
             "velocity_toward_target": 0.0,
+            "handbrake": False,
+            "creation_slide_guard": False,
         }
 
     def _apply_tangent_latch(self, setup, ball_pos, ball_vel):
@@ -706,6 +718,7 @@ class ExecuteTest(BaseAgent):
             f"preplan={t.get('prepositioned', False)} "
             f"boost={t.get('boost_command', False)} "
             f"latch={t.get('tangent_latched', False)} "
+            f"slide={t.get('handbrake', False)} "
             f"exec_dist={t.get('execute_distance', float('nan')):.0f} "
             f"ball_spd={t.get('ball_speed', float('nan')):.0f} "
             f"tan_gain={t.get('tangent_gain', float('nan')):.0f}"

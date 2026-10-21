@@ -148,3 +148,18 @@ def test_integrated_bot_pauses_before_recreating_a_lost_setup():
     assert bot.state == "SEARCH"
     assert bot.last_telemetry["setup_reason"] == "setup_lost_recovery"
     assert out.throttle == pytest.approx(0.0)
+
+
+def test_integrated_bot_disables_powerslide_near_moving_ball():
+    bot = make_bot()
+    out = bot.get_output(
+        make_wall_packet(
+            ball_location=(0.0, 0.0, 93.0),
+            car_location=(-20.0, 0.0, 17.01),
+            car_velocity=(0.0, 500.0, 0.0),
+            car_rotation=(0.0, math.pi / 2.0, 0.0),
+        )
+    )
+    assert bot.state == "CREATE_SETUP"
+    assert bot.last_telemetry["creation_slide_guard"] is True
+    assert out.handbrake is False

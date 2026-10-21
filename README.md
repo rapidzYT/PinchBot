@@ -117,6 +117,7 @@ and pushes the ball toward its selected side wall. Once the ball is near the
 wall, it transitions through `SETUP`/`STABILIZE` and holds the lime setup point.
 Telemetry is prefixed `[PinchBot]`; `boost=True` is expected during a long,
 aligned approach or push, and `latch=True` should appear during a viable setup.
+During close ball control, `slide=False` is expected.
 There should be no `EXECUTE` state. If the ball rolls away after reaching the
 wall, expect a short `setup_lost_recovery` pause before the bot tries another
 setup. This is the physical gate before the Kuxir pinch is merged into the main
