@@ -99,6 +99,7 @@ def test_integrated_bot_pushes_toward_selected_wall_when_behind_ball():
     assert out.throttle == pytest.approx(1.0)
     assert out.boost is True
     assert bot.last_telemetry["handbrake"] is False
+    assert bot.last_telemetry["target_distance"] < 40.0
 
 
 def test_integrated_bot_latches_wall_direction_during_one_setup_attempt():
