@@ -99,9 +99,12 @@ telemetry lines) — that is a real bug to diagnose, not to tune around.
 wall-pinch geometry/navigation stages into the bot named **PinchBot**. It can
 choose a side wall, drive behind a midfield ball, push the ball toward that
 wall, then switch to bounded predicted pre-positioning and stabilize at the
-pinch setup point. Boost is used only on long aligned travel. The Kuxir pinch
-execution remains disabled until this setup-making behavior is physically
-reliable.
+pinch setup point. Boost is used on long aligned travel and on a controlled,
+aligned push while plenty of wall distance remains. The bot latches the
+wall-exit direction for each setup attempt so a small tangent-velocity sign
+change cannot jerk the target underneath the car, and pauses briefly before
+recreating a setup it has just lost. The Kuxir pinch execution remains disabled
+until this setup-making behavior is physically reliable.
 
 ### Physical test for the current main bot
 
@@ -112,8 +115,12 @@ reliable.
 **Expected:** PinchBot shows `CREATE_SETUP`, approaches from the interior side,
 and pushes the ball toward its selected side wall. Once the ball is near the
 wall, it transitions through `SETUP`/`STABILIZE` and holds the lime setup point.
-Telemetry is prefixed `[PinchBot]`; there should be no `EXECUTE` state. This is
-the physical gate before the Kuxir pinch is merged into the main bot.
+Telemetry is prefixed `[PinchBot]`; `boost=True` is expected during a long,
+aligned approach or push, and `latch=True` should appear during a viable setup.
+There should be no `EXECUTE` state. If the ball rolls away after reaching the
+wall, expect a short `setup_lost_recovery` pause before the bot tries another
+setup. This is the physical gate before the Kuxir pinch is merged into the main
+bot.
 
 ## Stage 1 — generic navigation (NavTest)
 

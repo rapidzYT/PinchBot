@@ -90,7 +90,61 @@ def test_integrated_bot_pushes_toward_selected_wall_when_behind_ball():
             ball_velocity=(0.0, 0.0, 0.0),
             car_location=(-180.0, 0.0, 17.01),
             car_rotation=(0.0, 0.0, 0.0),
+            car_boost=40,
         )
     )
     assert bot.state == "CREATE_SETUP"
     assert out.throttle == pytest.approx(1.0)
+    assert out.boost is True
+
+
+def test_integrated_bot_latches_wall_direction_during_one_setup_attempt():
+    setup = geom.compute_wall_pinch_setup(
+        geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, 1000.0, 0.0), team=0
+    )
+    yaw = math.atan2(setup.approach_direction.y, setup.approach_direction.x)
+    bot = make_bot()
+    bot.get_output(
+        make_wall_packet(
+            ball_velocity=(0.0, 1000.0, 0.0),
+            car_location=(setup.approach_point.x, setup.approach_point.y, setup.approach_point.z),
+            car_rotation=(0.0, yaw, 0.0),
+        )
+    )
+    first_target = bot.last_target
+    bot.get_output(
+        make_wall_packet(
+            ball_velocity=(0.0, -1000.0, 0.0),
+            car_location=(setup.approach_point.x, setup.approach_point.y, setup.approach_point.z),
+            car_rotation=(0.0, yaw, 0.0),
+        )
+    )
+    assert bot.state == "STABILIZE"
+    assert bot.last_target.y == pytest.approx(first_target.y)
+    assert bot.last_telemetry["tangent_latched"] is True
+
+
+def test_integrated_bot_pauses_before_recreating_a_lost_setup():
+    setup = geom.compute_wall_pinch_setup(
+        geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, 0.0, 0.0), team=0
+    )
+    yaw = math.atan2(setup.approach_direction.y, setup.approach_direction.x)
+    bot = make_bot()
+    bot.get_output(
+        make_wall_packet(
+            seconds_elapsed=0.0,
+            car_location=(setup.approach_point.x, setup.approach_point.y, setup.approach_point.z),
+            car_rotation=(0.0, yaw, 0.0),
+        )
+    )
+    out = bot.get_output(
+        make_wall_packet(
+            seconds_elapsed=0.1,
+            ball_location=(0.0, 0.0, 93.0),
+            car_location=(setup.approach_point.x, setup.approach_point.y, setup.approach_point.z),
+            car_rotation=(0.0, yaw, 0.0),
+        )
+    )
+    assert bot.state == "SEARCH"
+    assert bot.last_telemetry["setup_reason"] == "setup_lost_recovery"
+    assert out.throttle == pytest.approx(0.0)

@@ -41,6 +41,8 @@ RECOVERY_SECONDS = 0.80            # avoid immediately repeating a stale attempt
 STABILIZE_TIMEOUT_SECONDS = 8.0    # never wait forever for a transient setup
 CREATE_SETUP_ARRIVAL_RADIUS = 120.0
 CREATE_SETUP_STANDOFF = 35.0       # keep the first setup push deliberate
+CREATE_SETUP_PUSH_BOOST_MIN_GAP = 1800.0  # only boost while a long wall push remains
+CREATE_SETUP_RECOVERY_SECONDS = 1.0       # let a lost setup clear before retrying
 
 # Early setup uses the same proven rule as StabilizeTest, so ExecuteTest gets
 # moving before a transient wall-contact window opens.
@@ -96,6 +98,9 @@ class ExecuteTest(BaseAgent):
         self._prepositioned = False
         self._boost_command = False
         self.creation_target = None
+        self._latched_tangent_sign = None
+        self._setup_was_viable = False
+        self._creation_cooldown_until = None
         mode = (
             "FIRST CONTACT ATTEMPT -- conservative verification"
             if self.ALLOW_EXECUTE
@@ -122,6 +127,7 @@ class ExecuteTest(BaseAgent):
 
         if not packet.game_info.is_round_active:
             self._reset_search()
+            self._creation_cooldown_until = None
             self.state = STATE_WAIT
             self._record_rejected(None, "round_inactive")
             self._render(car, None, None)
@@ -135,6 +141,20 @@ class ExecuteTest(BaseAgent):
         self._last_wall_velocity = (
             ball_vel.dot(setup.wall_normal) if setup.wall else float("nan")
         )
+
+        # Ball velocity can briefly cross the tangent threshold while it is
+        # rolling on the wall.  Keep one setup attempt aimed in the same
+        # direction instead of moving the approach point underneath the car.
+        if setup.viable:
+            setup = self._apply_tangent_latch(setup, ball_pos, ball_vel)
+            self.creation_target = None
+            self._setup_was_viable = True
+            self._creation_cooldown_until = None
+        elif self._setup_was_viable:
+            self._setup_was_viable = False
+            self._latched_tangent_sign = None
+            if self.CREATE_SETUP:
+                self._creation_cooldown_until = now + CREATE_SETUP_RECOVERY_SECONDS
 
         if self.state == STATE_RECOVER:
             if self.recovery_until is not None and now < self.recovery_until:
@@ -160,6 +180,18 @@ class ExecuteTest(BaseAgent):
             return neutral
 
         if self.CREATE_SETUP and not setup.viable:
+            if (
+                self._creation_cooldown_until is not None
+                and now < self._creation_cooldown_until
+            ):
+                self.state = STATE_SEARCH
+                self.creation_target = None
+                self._boost_command = False
+                self._record_rejected(setup, "setup_lost_recovery")
+                self._render(car, setup, None)
+                self._telemetry()
+                return neutral
+            self._creation_cooldown_until = None
             controls, creation_telemetry = self._create_setup_controls(
                 car, setup, ball_pos, ball_vel
             )
@@ -338,8 +370,12 @@ class ExecuteTest(BaseAgent):
             wall_heading_error * navigation.STEER_GAIN
         )
         controls.throttle = 1.0 if abs(wall_heading_error) <= 0.45 else 0.25
-        controls.boost = False
-        self._boost_command = False
+        controls.boost = (
+            getattr(car, "boost", 0) > 0
+            and setup.ball_wall_gap > CREATE_SETUP_PUSH_BOOST_MIN_GAP
+            and abs(wall_heading_error) <= 0.30
+        )
+        self._boost_command = controls.boost
         return controls, {
             "state": STATE_CREATE_SETUP,
             "target": (target.x, target.y, target.z),
@@ -351,6 +387,34 @@ class ExecuteTest(BaseAgent):
             "execute_ready": False,
             "velocity_toward_target": 0.0,
         }
+
+    def _apply_tangent_latch(self, setup, ball_pos, ball_vel):
+        """Keep the live approach direction stable during one wall setup.
+
+        The geometry intentionally follows the ball's tangent velocity when
+        it is strong enough.  Near the threshold, that sign can change from
+        one packet to the next even though the ball is still usable.  A
+        latched sign prevents a sudden target jump while the car is braking
+        into the setup point.  It is cleared as soon as the setup is lost.
+        """
+        current_sign = 1 if setup.wall_tangent.y >= 0.0 else -1
+        if self._latched_tangent_sign is None:
+            self._latched_tangent_sign = current_sign
+            return setup
+        if self._latched_tangent_sign == current_sign:
+            return setup
+
+        forced_tangent_velocity = self._latched_tangent_sign * (
+            geom.TANGENT_VEL_THRESHOLD + 1.0
+        )
+        latched_setup = geom.compute_wall_pinch_setup(
+            ball_pos,
+            Vec3(ball_vel.x, forced_tangent_velocity, ball_vel.z),
+            self.team,
+        )
+        if not latched_setup.viable:
+            return setup
+        return latched_setup
 
     def _maybe_enable_creation_boost(self, car, controls, telemetry):
         self._boost_command = False
@@ -535,6 +599,7 @@ class ExecuteTest(BaseAgent):
             "execute_ready": False,
             "prepositioned": False,
             "boost_command": False,
+            "tangent_latched": self._latched_tangent_sign is not None,
             "result": self.result,
         }
 
@@ -550,6 +615,7 @@ class ExecuteTest(BaseAgent):
             "result": self.result,
             "prepositioned": self._prepositioned,
             "boost_command": self._boost_command,
+            "tangent_latched": self._latched_tangent_sign is not None,
             "ball_speed": ball_vel.flat().length(),
             "execute_elapsed": (
                 float("nan") if self.execute_started is None else now - self.execute_started
@@ -579,6 +645,8 @@ class ExecuteTest(BaseAgent):
         self.execute_setup = None
         self.pre_ball_velocity = None
         self.pre_ball_position = None
+        self._latched_tangent_sign = None
+        self._setup_was_viable = False
 
     def _render(self, car, setup, tele):
         r = self.renderer
@@ -637,6 +705,7 @@ class ExecuteTest(BaseAgent):
             f"ready={t.get('execute_ready', False)} "
             f"preplan={t.get('prepositioned', False)} "
             f"boost={t.get('boost_command', False)} "
+            f"latch={t.get('tangent_latched', False)} "
             f"exec_dist={t.get('execute_distance', float('nan')):.0f} "
             f"ball_spd={t.get('ball_speed', float('nan')):.0f} "
             f"tan_gain={t.get('tangent_gain', float('nan')):.0f}"
