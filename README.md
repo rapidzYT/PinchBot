@@ -18,8 +18,8 @@ gameplay features require a physical RLBot GUI test.
 | 3 | Wall geometry physically believable | ✅ VERIFIED | ✅ VERIFIED (2026-10-21) |
 | 4 | Car reaches the pinch setup point (`StabilizeTest`) | ✅ VERIFIED (software) | — |
 | 5 | Pinch stabilization (`SEARCH → STABILIZE → HOLD`, no contact) | ✅ VERIFIED (software) | — |
-| 6 | First pinch EXECUTE attempt | — | — |
-| 7 | Pinch VERIFY | — | — |
+| 6 | First pinch EXECUTE attempt (`ExecuteTest`) | ✅ VERIFIED (software) | — |
+| 7 | Pinch VERIFY and conservative result classification | ✅ VERIFIED (software) | — |
 | 8 | RECOVER / retry | — | — |
 | 9 | Reliable Kuxir wall pinch | — | — |
 
@@ -36,6 +36,8 @@ PinchBot/
 │   ├── geomtest.py       # Stage 2 render-only geometry inspection bot
 │   ├── stabilize_test.py # Stage 4/5 setup stabilization bot; no contact
 │   ├── stabilize_test.cfg
+│   ├── execute_test.py    # Stage 6/7 first contact + verification bot
+│   ├── execute_test.cfg
 │   ├── pinch_bot.cfg     # RLBot bot config (add THIS in RLBotGUI)
 │   └── appearance.cfg    # loadout
 ├── tests/                # software validation (pytest)
@@ -208,3 +210,37 @@ This checkpoint is **not physically verified** until those observations are
 confirmed in Rocket League. Paste several `[StabilizeTest]` telemetry lines,
 including `wall_vel` during `SETUP`, the transition to `HOLD`, and any
 rejection/recovery behavior, before marking it physically verified.
+
+## Stage 6/7 — first contact attempt (ExecuteTest)
+
+`ExecuteTest` (`src/execute_test.cfg`) is the first bot allowed to make
+intentional ball contact. It retains the strict wall geometry and only enters
+`EXECUTE` after the car is grounded, within the setup gate, and aligned with
+the diagonal approach direction. It then sends one short bounded throttle pulse
+toward the predicted car contact-center line, stops, and observes the ball.
+
+The result is intentionally conservative: `MISS`, `SOFT_CONTACT`,
+`NORMAL_CONTACT`, or `POSSIBLE_PINCH`. `POSSIBLE_PINCH` means the ball gained
+substantial speed along the expected wall tangent; it is not yet proof that the
+ball was compressed between car and wall. There is no automatic
+`PINCH_CONFIRMED` claim at this stage.
+
+### Physical RLBot GUI test for the first contact
+
+1. Add `src/execute_test.cfg` in RLBotGUI and run it in Free Play. Press
+   **Page Up** to enable rendering.
+2. Place the ball low on a side wall, well away from both corners. Use a fresh
+   round and keep other cars out of the way.
+3. Watch for `STABILIZE` followed by `EXECUTE`. The orange marker is the
+   predicted car contact-center line; the attempt may move the ball.
+
+**Expected:** if the car reaches the gate while the ball is still viable, it
+drives diagonally into the ball once, then enters `VERIFY` and holds neutral
+controls. Paste the `[ExecuteTest]` lines containing `EXECUTE`, `VERIFY`, and
+the final `result`, plus the observed ball motion. If the ball leaves the wall
+before the gate, the bot should remain safe and report `SEARCH`; that is a
+missed opportunity, not a confirmed pinch.
+
+This milestone is **not physically verified** until a human observes the first
+contact and reports the actual result. Do not tune the thresholds from a single
+lucky outcome; record the telemetry first.
