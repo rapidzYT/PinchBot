@@ -96,24 +96,24 @@ telemetry lines) — that is a real bug to diagnose, not to tune around.
 ## Current main bot — integrated setup-only `PinchBot`
 
 `src/pinch_bot.cfg` now loads `src/pinchbot.py`, which combines the live
-geometry/navigation stages into the bot named **PinchBot**. It can search for
-its own wall opportunity, pre-position toward a bounded predicted wall-impact
-setup, use boost on long aligned approaches, and stabilize at the setup point.
-Intentional contact remains disabled until this combined setup behavior is
-physically reliable.
+wall-pinch geometry/navigation stages into the bot named **PinchBot**. It can
+choose a side wall, drive behind a midfield ball, push the ball toward that
+wall, then switch to bounded predicted pre-positioning and stabilize at the
+pinch setup point. Boost is used only on long aligned travel. The Kuxir pinch
+execution remains disabled until this setup-making behavior is physically
+reliable.
 
 ### Physical test for the current main bot
 
 1. In RLBotGUI, add or reload `src/pinch_bot.cfg` and start Free Play.
 2. Press **Page Up** to enable rendering.
-3. Let the ball approach a side wall, or place it low on the middle of a side
-   wall away from the corners.
+3. Start with the ball near midfield and keep other cars out of the way.
 
-**Expected:** PinchBot searches, drives to its own lime setup point, and holds
-without touching the ball. Telemetry is prefixed `[PinchBot]`; it should show
-`SETUP`/`STABILIZE`, `preplan=True` during early prediction when applicable,
-and no `EXECUTE` state. This is the new physical gate before contact is merged
-into the main bot.
+**Expected:** PinchBot shows `CREATE_SETUP`, approaches from the interior side,
+and pushes the ball toward its selected side wall. Once the ball is near the
+wall, it transitions through `SETUP`/`STABILIZE` and holds the lime setup point.
+Telemetry is prefixed `[PinchBot]`; there should be no `EXECUTE` state. This is
+the physical gate before the Kuxir pinch is merged into the main bot.
 
 ## Stage 1 — generic navigation (NavTest)
 

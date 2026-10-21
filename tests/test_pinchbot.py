@@ -63,3 +63,34 @@ def test_integrated_bot_holds_ready_setup_without_contact():
     assert bot.execute_target is None
     assert out.throttle == pytest.approx(0.0)
     assert out.steer == pytest.approx(0.0)
+
+
+def test_integrated_bot_creates_setup_from_midfield():
+    bot = make_bot()
+    out = bot.get_output(
+        make_wall_packet(
+            ball_location=(0.0, 0.0, 93.0),
+            ball_velocity=(0.0, 0.0, 0.0),
+            car_location=(-1200.0, 0.0, 17.01),
+            car_rotation=(0.0, 0.0, 0.0),
+        )
+    )
+    assert bot.state == "CREATE_SETUP"
+    assert bot.creation_target is not None
+    assert bot.last_telemetry["setup_viable"] is False
+    assert bot.last_telemetry["state"] == "CREATE_SETUP"
+    assert out.throttle != pytest.approx(0.0)
+
+
+def test_integrated_bot_pushes_toward_selected_wall_when_behind_ball():
+    bot = make_bot()
+    out = bot.get_output(
+        make_wall_packet(
+            ball_location=(0.0, 0.0, 93.0),
+            ball_velocity=(0.0, 0.0, 0.0),
+            car_location=(-180.0, 0.0, 17.01),
+            car_rotation=(0.0, 0.0, 0.0),
+        )
+    )
+    assert bot.state == "CREATE_SETUP"
+    assert out.throttle == pytest.approx(1.0)

@@ -39,6 +39,8 @@ EXECUTE_MAX_SECONDS = 0.75        # enough time to accelerate from a stopped set
 VERIFY_SECONDS = 0.30             # allow the ball velocity to settle
 RECOVERY_SECONDS = 0.80            # avoid immediately repeating a stale attempt
 STABILIZE_TIMEOUT_SECONDS = 8.0    # never wait forever for a transient setup
+CREATE_SETUP_ARRIVAL_RADIUS = 120.0
+CREATE_SETUP_STANDOFF = 35.0       # keep the first setup push deliberate
 
 # Early setup uses the same proven rule as StabilizeTest, so ExecuteTest gets
 # moving before a transient wall-contact window opens.
@@ -58,6 +60,7 @@ RESULT_POSSIBLE_PINCH = "POSSIBLE_PINCH"
 
 STATE_WAIT = "WAIT"
 STATE_SEARCH = "SEARCH"
+STATE_CREATE_SETUP = "CREATE_SETUP"
 STATE_SETUP = "SETUP"
 STATE_STABILIZE = "STABILIZE"
 STATE_EXECUTE = "EXECUTE"
@@ -71,6 +74,7 @@ class ExecuteTest(BaseAgent):
     # Subclasses can reuse the live SEARCH/SETUP/STABILIZE pipeline while
     # keeping intentional contact disabled until setup reliability is proven.
     ALLOW_EXECUTE = True
+    CREATE_SETUP = False
 
     def initialize_agent(self):
         self.tick = 0
@@ -91,6 +95,7 @@ class ExecuteTest(BaseAgent):
         self._last_ball_z = float("nan")
         self._prepositioned = False
         self._boost_command = False
+        self.creation_target = None
         mode = (
             "FIRST CONTACT ATTEMPT -- conservative verification"
             if self.ALLOW_EXECUTE
@@ -153,6 +158,17 @@ class ExecuteTest(BaseAgent):
             self._render(car, setup, None)
             self._telemetry()
             return neutral
+
+        if self.CREATE_SETUP and not setup.viable:
+            controls, creation_telemetry = self._create_setup_controls(
+                car, setup, ball_pos, ball_vel
+            )
+            if creation_telemetry is not None:
+                self.state = STATE_CREATE_SETUP
+                self._record_telemetry(setup, creation_telemetry, ball_vel, now)
+                self._render(car, setup, creation_telemetry)
+                self._telemetry()
+                return controls
 
         # Once EXECUTE has started, do not discard the attempt merely because
         # the ball rose or left the strict setup band.  Finish the bounded pulse
@@ -263,6 +279,91 @@ class ExecuteTest(BaseAgent):
             and math.isfinite(setup.approach_point.y)
             and math.isfinite(setup.approach_point.z)
         )
+
+    def _create_setup_controls(self, car, setup, ball_pos, ball_vel):
+        """Drive the ball toward the selected side wall before pinching.
+
+        The target is on the interior side of the ball, so the car pushes in
+        the outward direction toward the selected wall.  This is setup-making
+        contact, not the pinch execution path.  Corner, height, and invalid
+        geometry rejections return ``None`` so the caller remains neutral.
+        """
+        if setup.reject_reason not in ("ball_not_near_wall",):
+            self.creation_target = None
+            self._boost_command = False
+            return SimpleControllerState(), None
+
+        wall_direction = -1.0 * setup.wall_normal
+        target = ball_pos - wall_direction * (
+            geom.field.BALL_RADIUS + geom.field.CAR_HALF_LENGTH + CREATE_SETUP_STANDOFF
+        )
+        target = Vec3(target.x, target.y, geom.field.CAR_REST_Z)
+        if (
+            not all(math.isfinite(value) for value in (target.x, target.y, target.z))
+            or abs(target.x) >= geom.field.SIDE_WALL_X - geom.FIELD_MARGIN
+            or abs(target.y) >= geom.field.BACK_WALL_Y - geom.FIELD_MARGIN
+        ):
+            self.creation_target = None
+            self._boost_command = False
+            return SimpleControllerState(), None
+
+        self.creation_target = target
+        car_loc = Vec3(car.physics.location)
+        target_distance = (target - car_loc).flat().length()
+        wall_heading_error = self._direction_heading_error(car, wall_direction)
+
+        if target_distance > CREATE_SETUP_ARRIVAL_RADIUS:
+            controls, nav = navigation.drive_to_target(
+                car, target, arrival_radius=CREATE_SETUP_ARRIVAL_RADIUS
+            )
+            self._maybe_enable_creation_boost(car, controls, nav)
+            nav = dict(nav)
+            nav.update({
+                "state": STATE_CREATE_SETUP,
+                "target": (target.x, target.y, target.z),
+                "target_distance": target_distance,
+                "heading_error": nav["heading_error"],
+                "creation_target_distance": target_distance,
+                "creation_wall_heading_error": wall_heading_error,
+                "execute_distance": float("nan"),
+                "execute_ready": False,
+            })
+            return controls, nav
+
+        # Once behind the ball, push in the selected wall direction. Keep the
+        # first push slow while the car aligns; use full throttle only when the
+        # push direction is reasonably controlled.
+        controls = SimpleControllerState()
+        controls.steer = limit_to_safe_range(
+            wall_heading_error * navigation.STEER_GAIN
+        )
+        controls.throttle = 1.0 if abs(wall_heading_error) <= 0.45 else 0.25
+        controls.boost = False
+        self._boost_command = False
+        return controls, {
+            "state": STATE_CREATE_SETUP,
+            "target": (target.x, target.y, target.z),
+            "target_distance": target_distance,
+            "heading_error": wall_heading_error,
+            "creation_target_distance": target_distance,
+            "creation_wall_heading_error": wall_heading_error,
+            "execute_distance": float("nan"),
+            "execute_ready": False,
+            "velocity_toward_target": 0.0,
+        }
+
+    def _maybe_enable_creation_boost(self, car, controls, telemetry):
+        self._boost_command = False
+        controls.boost = False
+        if (
+            controls.throttle >= 0.9
+            and not controls.handbrake
+            and getattr(car, "boost", 0) > 0
+            and telemetry["target_distance"] > 1000.0
+            and abs(telemetry["heading_error"]) <= 0.45
+        ):
+            controls.boost = True
+            self._boost_command = True
 
     def _preposition_target(self, setup, ball_pos, ball_vel):
         """Aim at a bounded estimate of the wall-impact setup point.
@@ -502,8 +603,11 @@ class ExecuteTest(BaseAgent):
             )
             if self.execute_target is not None:
                 r.draw_rect_3d(self.execute_target, 22, 22, True, r.orange(), centered=True)
+            if self.creation_target is not None:
+                r.draw_rect_3d(self.creation_target, 22, 22, True, r.orange(), centered=True)
             if car is not None:
-                r.draw_line_3d(Vec3(car.physics.location), setup.approach_point, r.cyan())
+                line_target = self.creation_target or setup.approach_point
+                r.draw_line_3d(Vec3(car.physics.location), line_target, r.cyan())
 
         status = f"ExecuteTest {self.state} result={self.result}"
         if setup is None:

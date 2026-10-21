@@ -12,6 +12,7 @@ from execute_test import ExecuteTest
 
 
 class PinchBot(ExecuteTest):
-    """Build and hold live pinch setups; do not touch the ball yet."""
+    """Create and hold live pinch setups; do not execute the pinch yet."""
 
     ALLOW_EXECUTE = False
+    CREATE_SETUP = True
