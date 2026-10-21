@@ -189,15 +189,16 @@ class ExecuteTest(BaseAgent):
             return neutral
 
         # The useful wall-contact window can be shorter than the time needed
-        # for navigation to settle from BRAKE to ARRIVED.  A braking car is
-        # still safe to gate when the independent contact checks below pass:
-        # close to the setup point, grounded, and pointed along the approach
-        # direction.  Requiring NAV_ARRIVED here made the first physical run
-        # miss every window while the car waited for a perfect stop.
+        # for navigation to settle from DRIVE/BRAKE to ARRIVED.  The final
+        # approach is safe to gate when the independent contact checks below
+        # pass: close to the setup point, grounded, and pointed along the
+        # approach direction.  Waiting for a perfect navigation state made
+        # the first physical run miss an otherwise aligned window at 155 uu.
         if setup.viable and nav_telemetry["state"] in (
+            navigation.NAV_DRIVE,
             navigation.NAV_BRAKE,
             navigation.NAV_ARRIVED,
-        ):
+        ) and nav_telemetry["target_distance"] <= EXECUTE_GATE_RADIUS:
             gate = self._execute_gate(car, setup)
             if gate["execute_ready"]:
                 self._begin_execute(now, ball_pos, ball_vel, setup)

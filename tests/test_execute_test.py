@@ -103,6 +103,24 @@ def test_braking_arrival_can_enter_execute_before_perfect_stop():
     assert bot.last_telemetry["execute_ready"] is True
 
 
+def test_aligned_final_approach_can_enter_execute_before_arrival_radius():
+    setup = geom.compute_wall_pinch_setup(
+        geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, 0.0, 0.0), team=0
+    )
+    yaw = math.atan2(setup.approach_direction.y, setup.approach_direction.x)
+    car_location = setup.approach_point - setup.approach_direction * 155.0
+    bot = make_bot()
+    out = bot.get_output(
+        make_wall_packet(
+            car_location=(car_location.x, car_location.y, car_location.z),
+            car_rotation=(0.0, yaw, 0.0),
+        )
+    )
+    assert bot.state == STATE_EXECUTE
+    assert out.throttle == pytest.approx(1.0)
+    assert bot.last_telemetry["execute_ready"] is True
+
+
 def test_misaligned_setup_stabilizes_before_execute():
     setup = geom.compute_wall_pinch_setup(
         geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, 0.0, 0.0), team=0
