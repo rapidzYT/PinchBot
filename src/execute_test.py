@@ -44,6 +44,7 @@ CREATE_SETUP_STANDOFF = 35.0       # keep the first setup push deliberate
 CREATE_SETUP_PUSH_BOOST_MIN_GAP = 1800.0  # only boost while a long wall push remains
 CREATE_SETUP_RECOVERY_SECONDS = 1.0       # let a lost setup clear before retrying
 CREATE_SETUP_NO_SLIDE_DISTANCE = 700.0    # keep close ball control grounded
+STABILIZE_NO_SLIDE_DISTANCE = 700.0       # do not drift around a live setup point
 
 # Early setup uses the same proven rule as StabilizeTest, so ExecuteTest gets
 # moving before a transient wall-contact window opens.
@@ -252,6 +253,19 @@ class ExecuteTest(BaseAgent):
         controls, nav_telemetry = navigation.drive_to_target(
             car, navigation_target, arrival_radius=SETUP_ARRIVAL_RADIUS
         )
+        stabilize_slide_guard = (
+            self.state == STATE_STABILIZE
+            and nav_telemetry["target_distance"] <= STABILIZE_NO_SLIDE_DISTANCE
+        )
+        if stabilize_slide_guard:
+            # The setup point moves with the ball.  A handbrake turn near it
+            # makes the car orbit the contact line instead of settling behind
+            # the ball.  Keep the navigator's braking/throttle decision, but
+            # remove only the drift command in this close live-setup window.
+            controls.handbrake = False
+            nav_telemetry = dict(nav_telemetry)
+            nav_telemetry["handbrake"] = False
+            nav_telemetry["stabilize_slide_guard"] = True
         self.last_target = navigation_target
 
         if self.tracking_since is not None and now - self.tracking_since > STABILIZE_TIMEOUT_SECONDS:
@@ -359,6 +373,7 @@ class ExecuteTest(BaseAgent):
                 controls.handbrake = False
             self._maybe_enable_creation_boost(car, controls, nav)
             nav = dict(nav)
+            nav["handbrake"] = controls.handbrake
             nav.update({
                 "state": STATE_CREATE_SETUP,
                 "target": (target.x, target.y, target.z),

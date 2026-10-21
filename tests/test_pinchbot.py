@@ -96,6 +96,7 @@ def test_integrated_bot_pushes_toward_selected_wall_when_behind_ball():
     assert bot.state == "CREATE_SETUP"
     assert out.throttle == pytest.approx(1.0)
     assert out.boost is True
+    assert bot.last_telemetry["handbrake"] is False
 
 
 def test_integrated_bot_latches_wall_direction_during_one_setup_attempt():
@@ -162,4 +163,21 @@ def test_integrated_bot_disables_powerslide_near_moving_ball():
     )
     assert bot.state == "CREATE_SETUP"
     assert bot.last_telemetry["creation_slide_guard"] is True
+    assert out.handbrake is False
+
+
+def test_integrated_bot_disables_powerslide_near_live_setup_point():
+    setup = geom.compute_wall_pinch_setup(
+        geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, 0.0, 0.0), team=0
+    )
+    bot = make_bot()
+    out = bot.get_output(
+        make_wall_packet(
+            car_location=(setup.approach_point.x, setup.approach_point.y - 400.0, setup.approach_point.z),
+            car_velocity=(500.0, 0.0, 0.0),
+            car_rotation=(0.0, 0.0, 0.0),
+        )
+    )
+    assert bot.state == "STABILIZE"
+    assert bot.last_telemetry["stabilize_slide_guard"] is True
     assert out.handbrake is False
