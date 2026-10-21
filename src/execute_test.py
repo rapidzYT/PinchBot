@@ -68,6 +68,10 @@ STATE_RECOVER = "RECOVER"
 class ExecuteTest(BaseAgent):
     """Attempt one conservative wall contact, then measure its result."""
 
+    # Subclasses can reuse the live SEARCH/SETUP/STABILIZE pipeline while
+    # keeping intentional contact disabled until setup reliability is proven.
+    ALLOW_EXECUTE = True
+
     def initialize_agent(self):
         self.tick = 0
         self.state = STATE_WAIT
@@ -87,9 +91,14 @@ class ExecuteTest(BaseAgent):
         self._last_ball_z = float("nan")
         self._prepositioned = False
         self._boost_command = False
+        mode = (
+            "FIRST CONTACT ATTEMPT -- conservative verification"
+            if self.ALLOW_EXECUTE
+            else "SETUP ONLY -- intentional contact disabled"
+        )
         self.logger.info(
-            f"ExecuteTest initialized (name={self.name!r}, index={self.index}, "
-            f"team={self.team}). FIRST CONTACT ATTEMPT -- conservative verification."
+            f"{self.__class__.__name__} initialized (name={self.name!r}, index={self.index}, "
+            f"team={self.team}). {mode}."
         )
 
     def get_output(self, packet: GameTickPacket) -> SimpleControllerState:
@@ -217,6 +226,12 @@ class ExecuteTest(BaseAgent):
         ) and nav_telemetry["target_distance"] <= EXECUTE_GATE_RADIUS:
             gate = self._execute_gate(car, setup)
             if gate["execute_ready"]:
+                if not self.ALLOW_EXECUTE:
+                    self._boost_command = False
+                    self._record_telemetry(setup, gate, ball_vel, now)
+                    self._render(car, setup, gate)
+                    self._telemetry()
+                    return SimpleControllerState()
                 self._begin_execute(now, ball_pos, ball_vel, setup)
                 controls, execute_telemetry = self._execute_controls(car)
                 self._record_telemetry(setup, execute_telemetry, ball_vel, now)
@@ -507,7 +522,7 @@ class ExecuteTest(BaseAgent):
             return
         t = self.last_telemetry
         print(
-            f"[ExecuteTest] tick={self.tick} state={t.get('state', self.state)} "
+            f"[{self.__class__.__name__}] tick={self.tick} state={t.get('state', self.state)} "
             f"result={t.get('result', self.result)} "
             f"viable={t.get('setup_viable', False)} reason={t.get('setup_reason', '') or '-'} "
             f"gap={t.get('ball_wall_gap', float('nan')):.0f} "

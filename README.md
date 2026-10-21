@@ -20,6 +20,7 @@ gameplay features require a physical RLBot GUI test.
 | 5 | Pinch stabilization (`SEARCH → STABILIZE → HOLD`, no contact) | ✅ VERIFIED (software) | — |
 | 6 | First pinch EXECUTE attempt (`ExecuteTest`) | ✅ VERIFIED (software) | — |
 | 7 | Pinch VERIFY and conservative result classification | ✅ VERIFIED (software) | — |
+| 7a | Integrated `PinchBot` setup-only controller | ✅ VERIFIED (software) | — |
 | 8 | RECOVER / retry | — | — |
 | 9 | Reliable Kuxir wall pinch | — | — |
 
@@ -31,7 +32,8 @@ Legend: ✅ verified · ⏳ pending · — not started. Later: ground (10), ceil
 ```
 PinchBot/
 ├── src/
-│   ├── bot.py            # the bot (Stage 0 foundation; BaseAgent subclass)
+│   ├── bot.py            # frozen Stage 0 foundation regression bot
+│   ├── pinchbot.py       # integrated PinchBot; setup-only until reliable
 │   ├── navtest.py        # Stage 1 generic navigation test bot
 │   ├── geomtest.py       # Stage 2 render-only geometry inspection bot
 │   ├── stabilize_test.py # Stage 4/5 setup stabilization bot; no contact
@@ -62,7 +64,7 @@ From the RLBot Python environment (the one with `rlbot` installed):
 python -m pytest
 ```
 
-## Stage 0 — what the bot does
+## Stage 0 — frozen foundation (`bot.py`)
 
 A deliberately tiny, deterministic proof of the full pipeline. On the first tick
 the round is live, it anchors a clock to real game time and runs, in a straight
@@ -78,18 +80,40 @@ Concise telemetry prints about every 30 ticks (`state`, `tick`, `car_pos`,
 ### Physical RLBot GUI test for Stage 0
 
 1. Copy/clone this project to `C:\Users\omars\source\repos\PinchBot`.
-2. Open **RLBotGUI** → add bot from file → select `src/pinch_bot.cfg`
-   (install requirements if prompted). PinchBot appears on the blue team.
+2. The Stage 0 implementation remains in `src/bot.py` for regression tests.
+   The normal `src/pinch_bot.cfg` now loads the integrated setup controller below.
 3. Start an **Exhibition** match (or Free Play) on any map.
 4. Watch PinchBot the moment the kickoff countdown ends.
 
-**Expected:** PinchBot sits still for ~1 second, then drives **straight forward**
+**Expected for a direct Stage 0 config:** the foundation sits still for ~1 second, then drives **straight forward**
 for ~1.5 seconds, then releases and coasts to a stop. It does **not** turn,
 reverse, or spam inputs. The console shows the `IDLE → THROTTLE → STOP` states.
 
 If that is what you see, Stage 0 is **physically VERIFIED**. If it drives the
 wrong way, never moves, or jitters, report exactly what happened (and the
 telemetry lines) — that is a real bug to diagnose, not to tune around.
+
+## Current main bot — integrated setup-only `PinchBot`
+
+`src/pinch_bot.cfg` now loads `src/pinchbot.py`, which combines the live
+geometry/navigation stages into the bot named **PinchBot**. It can search for
+its own wall opportunity, pre-position toward a bounded predicted wall-impact
+setup, use boost on long aligned approaches, and stabilize at the setup point.
+Intentional contact remains disabled until this combined setup behavior is
+physically reliable.
+
+### Physical test for the current main bot
+
+1. In RLBotGUI, add or reload `src/pinch_bot.cfg` and start Free Play.
+2. Press **Page Up** to enable rendering.
+3. Let the ball approach a side wall, or place it low on the middle of a side
+   wall away from the corners.
+
+**Expected:** PinchBot searches, drives to its own lime setup point, and holds
+without touching the ball. Telemetry is prefixed `[PinchBot]`; it should show
+`SETUP`/`STABILIZE`, `preplan=True` during early prediction when applicable,
+and no `EXECUTE` state. This is the new physical gate before contact is merged
+into the main bot.
 
 ## Stage 1 — generic navigation (NavTest)
 
