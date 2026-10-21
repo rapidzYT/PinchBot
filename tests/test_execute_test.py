@@ -12,7 +12,6 @@ import wall_pinch_geometry as geom
 from fake_packet import make_packet
 from execute_test import (
     ExecuteTest,
-    RESULT_MISS,
     RESULT_POSSIBLE_PINCH,
     STATE_EXECUTE,
     STATE_RECOVER,
