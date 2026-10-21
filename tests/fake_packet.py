@@ -20,6 +20,7 @@ def make_packet(
     ball_velocity=(0.0, 0.0, 0.0),
     car_name: str = "PinchBot",
     car_team: int = 0,
+    car_boost: int = 0,
     has_wheel_contact: bool = True,
 ) -> GameTickPacket:
     """Create a GameTickPacket with one or more cars populated."""
@@ -33,6 +34,7 @@ def make_packet(
         car.physics.rotation.pitch, car.physics.rotation.yaw, car.physics.rotation.roll = car_rotation
         car.name = car_name           # c_wchar array accepts a python str directly
         car.team = car_team
+        car.boost = car_boost
         car.has_wheel_contact = has_wheel_contact
 
     ball = packet.game_ball

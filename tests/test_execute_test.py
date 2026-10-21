@@ -114,6 +114,41 @@ def test_viable_aligned_setup_enters_execute():
     assert bot.last_telemetry["execute_distance"] > 250.0
 
 
+def test_execute_uses_available_boost_for_long_contact_line():
+    setup = geom.compute_wall_pinch_setup(
+        geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, 0.0, 0.0), team=0
+    )
+    yaw = math.atan2(setup.approach_direction.y, setup.approach_direction.x)
+    bot = make_bot()
+    out = bot.get_output(
+        make_wall_packet(
+            car_location=(setup.approach_point.x, setup.approach_point.y, setup.approach_point.z),
+            car_rotation=(0.0, yaw, 0.0),
+            car_boost=40,
+        )
+    )
+    assert bot.state == STATE_EXECUTE
+    assert out.boost is True
+    assert bot.last_telemetry["boost_command"] is True
+
+
+def test_navigation_boost_waits_until_aligned_and_far():
+    bot = make_bot()
+    car = make_wall_packet(car_boost=40).game_cars[0]
+    controls = SimpleControllerState(throttle=1.0)
+    bot.state = STATE_SETUP
+    bot._maybe_enable_navigation_boost(
+        car, controls, {"target_distance": 1000.0, "heading_error": 0.2}
+    )
+    assert controls.boost is True
+
+    controls = SimpleControllerState(throttle=1.0)
+    bot._maybe_enable_navigation_boost(
+        car, controls, {"target_distance": 1000.0, "heading_error": 0.8}
+    )
+    assert controls.boost is False
+
+
 def test_braking_arrival_can_enter_execute_before_perfect_stop():
     setup = geom.compute_wall_pinch_setup(
         geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, 0.0, 0.0), team=0

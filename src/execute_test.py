@@ -85,6 +85,7 @@ class ExecuteTest(BaseAgent):
         self._last_wall_velocity = float("nan")
         self._last_ball_z = float("nan")
         self._prepositioned = False
+        self._boost_command = False
         self.logger.info(
             f"ExecuteTest initialized (name={self.name!r}, index={self.index}, "
             f"team={self.team}). FIRST CONTACT ATTEMPT -- conservative verification."
@@ -222,8 +223,10 @@ class ExecuteTest(BaseAgent):
                 self._telemetry()
                 return controls
             controls = self._alignment_controls(car, setup)
+            self._maybe_enable_navigation_boost(car, controls, gate)
             self._record_telemetry(setup, gate, ball_vel, now)
         else:
+            self._maybe_enable_navigation_boost(car, controls, nav_telemetry)
             self._record_telemetry(setup, nav_telemetry, ball_vel, now)
 
         self._render(car, setup, self.last_telemetry)
@@ -327,7 +330,12 @@ class ExecuteTest(BaseAgent):
         execute_distance = (self.execute_target - car_loc).flat().length()
         controls.steer = limit_to_safe_range(heading_error * navigation.STEER_GAIN)
         controls.throttle = 1.0
-        controls.boost = False
+        controls.boost = (
+            bool(getattr(car, "boost", 0) > 0)
+            and execute_distance > 120.0
+            and abs(heading_error) <= 0.60
+        )
+        self._boost_command = controls.boost
         return controls, {
             "state": STATE_EXECUTE,
             "target": (self.execute_target.x, self.execute_target.y, self.execute_target.z),
@@ -337,6 +345,32 @@ class ExecuteTest(BaseAgent):
             "execute_ready": True,
             "velocity_toward_target": 0.0,
         }
+
+    def _maybe_enable_navigation_boost(self, car, controls, telemetry):
+        """Use boost for a long, aligned ground approach, never for a hard turn."""
+        self._boost_command = False
+        controls.boost = False
+        if controls.throttle < 0.9 or controls.handbrake:
+            return
+        if getattr(car, "boost", 0) <= 0:
+            return
+
+        target_distance = telemetry.get("target_distance", float("inf"))
+        heading_error = abs(telemetry.get("heading_error", float("inf")))
+        if not math.isfinite(target_distance) or not math.isfinite(heading_error):
+            return
+
+        if (
+            self.state == STATE_SETUP
+            and target_distance > 600.0
+            and heading_error <= 0.65
+        ) or (
+            self.state == STATE_STABILIZE
+            and target_distance > 700.0
+            and heading_error <= 0.45
+        ):
+            controls.boost = True
+            self._boost_command = True
 
     def _direction_heading_error(self, car, direction):
         ori = Orientation(car.physics.rotation)
@@ -383,6 +417,7 @@ class ExecuteTest(BaseAgent):
             "execute_distance": float("nan"),
             "execute_ready": False,
             "prepositioned": False,
+            "boost_command": False,
             "result": self.result,
         }
 
@@ -397,6 +432,7 @@ class ExecuteTest(BaseAgent):
             "ball_z": self._last_ball_z,
             "result": self.result,
             "prepositioned": self._prepositioned,
+            "boost_command": self._boost_command,
             "ball_speed": ball_vel.flat().length(),
             "execute_elapsed": (
                 float("nan") if self.execute_started is None else now - self.execute_started
@@ -480,6 +516,7 @@ class ExecuteTest(BaseAgent):
             f"he_deg={math.degrees(t.get('heading_error', float('nan'))):.0f} "
             f"ready={t.get('execute_ready', False)} "
             f"preplan={t.get('prepositioned', False)} "
+            f"boost={t.get('boost_command', False)} "
             f"exec_dist={t.get('execute_distance', float('nan')):.0f} "
             f"ball_spd={t.get('ball_speed', float('nan')):.0f} "
             f"tan_gain={t.get('tangent_gain', float('nan')):.0f}"
