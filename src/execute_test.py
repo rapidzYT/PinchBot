@@ -188,7 +188,16 @@ class ExecuteTest(BaseAgent):
             self._telemetry()
             return neutral
 
-        if setup.viable and nav_telemetry["state"] == navigation.NAV_ARRIVED:
+        # The useful wall-contact window can be shorter than the time needed
+        # for navigation to settle from BRAKE to ARRIVED.  A braking car is
+        # still safe to gate when the independent contact checks below pass:
+        # close to the setup point, grounded, and pointed along the approach
+        # direction.  Requiring NAV_ARRIVED here made the first physical run
+        # miss every window while the car waited for a perfect stop.
+        if setup.viable and nav_telemetry["state"] in (
+            navigation.NAV_BRAKE,
+            navigation.NAV_ARRIVED,
+        ):
             gate = self._execute_gate(car, setup)
             if gate["execute_ready"]:
                 self._begin_execute(now, ball_pos, ball_vel, setup)
@@ -415,6 +424,8 @@ class ExecuteTest(BaseAgent):
             f"gap={t.get('ball_wall_gap', float('nan')):.0f} "
             f"wall_vel={t.get('wall_velocity', float('nan')):.0f} "
             f"dist={t.get('target_distance', float('nan')):.0f} "
+            f"he_deg={math.degrees(t.get('heading_error', float('nan'))):.0f} "
+            f"ready={t.get('execute_ready', False)} "
             f"exec_dist={t.get('execute_distance', float('nan')):.0f} "
             f"ball_spd={t.get('ball_speed', float('nan')):.0f} "
             f"tan_gain={t.get('tangent_gain', float('nan')):.0f}"
