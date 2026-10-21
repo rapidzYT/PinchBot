@@ -138,13 +138,20 @@ def test_navigation_boost_waits_until_aligned_and_far():
     controls = SimpleControllerState(throttle=1.0)
     bot.state = STATE_SETUP
     bot._maybe_enable_navigation_boost(
-        car, controls, {"target_distance": 1000.0, "heading_error": 0.2}
+        car, controls, {"target_distance": 1600.0, "heading_error": 0.2}
     )
     assert controls.boost is True
 
+    bot.state = STATE_STABILIZE
     controls = SimpleControllerState(throttle=1.0)
     bot._maybe_enable_navigation_boost(
-        car, controls, {"target_distance": 1000.0, "heading_error": 0.8}
+        car, controls, {"target_distance": 1000.0, "heading_error": 0.2}
+    )
+    assert controls.boost is False
+
+    controls = SimpleControllerState(throttle=1.0)
+    bot._maybe_enable_navigation_boost(
+        car, controls, {"target_distance": 1600.0, "heading_error": 0.8}
     )
     assert controls.boost is False
 

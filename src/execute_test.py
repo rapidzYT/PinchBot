@@ -48,6 +48,7 @@ STABILIZE_TIMEOUT_SECONDS = 8.0    # never wait forever for a transient setup
 PREPARE_MAX_WALL_GAP = 2500.0  # empirical early-warning band (uu)
 PREPARE_MIN_INWARD_SPEED = 100.0
 PREPARE_MAX_LEAD_SECONDS = 2.5  # bounded prediction horizon, empirical
+STABILIZE_BOOST_MIN_DISTANCE = 1400.0  # leave braking room after boost acceleration
 
 RESULT_UNVERIFIED = "UNVERIFIED"
 RESULT_MISS = "MISS"
@@ -366,7 +367,7 @@ class ExecuteTest(BaseAgent):
             and heading_error <= 0.65
         ) or (
             self.state == STATE_STABILIZE
-            and target_distance > 700.0
+            and target_distance > STABILIZE_BOOST_MIN_DISTANCE
             and heading_error <= 0.45
         ):
             controls.boost = True
