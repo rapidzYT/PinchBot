@@ -79,6 +79,22 @@ def test_fast_wall_approach_starts_prepositioning_early():
     assert bot.last_telemetry["setup_reason"] == "ball_not_near_wall"
 
 
+def test_fast_wall_approach_uses_bounded_wall_impact_prediction():
+    bot = make_bot()
+    current_setup = geom.compute_wall_pinch_setup(
+        geom.Vec3(2203.25, 500.0, 200.0), geom.Vec3(800.0, 0.0, 0.0), team=0
+    )
+    bot.get_output(
+        make_wall_packet(
+            ball_location=(2203.25, 500.0, 200.0),
+            ball_velocity=(800.0, 0.0, 0.0),
+        )
+    )
+    assert bot.last_telemetry["prepositioned"] is True
+    assert bot.last_target.x > current_setup.approach_point.x + 1000.0
+    assert abs(bot.last_target.x) < geom.field.SIDE_WALL_X
+
+
 def test_viable_aligned_setup_enters_execute():
     setup = geom.compute_wall_pinch_setup(
         geom.Vec3(3900.0, 500.0, 200.0), geom.Vec3(0.0, 0.0, 0.0), team=0

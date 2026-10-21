@@ -47,6 +47,7 @@ STABILIZE_TIMEOUT_SECONDS = 8.0    # never wait forever for a transient setup
 # the first-contact run (the ball could cover that gap before the car arrived).
 PREPARE_MAX_WALL_GAP = 2500.0  # empirical early-warning band (uu)
 PREPARE_MIN_INWARD_SPEED = 100.0
+PREPARE_MAX_LEAD_SECONDS = 2.5  # bounded prediction horizon, empirical
 
 RESULT_UNVERIFIED = "UNVERIFIED"
 RESULT_MISS = "MISS"
@@ -82,6 +83,7 @@ class ExecuteTest(BaseAgent):
         self.last_telemetry = {}
         self._telemetry_time = 0.0
         self._last_wall_velocity = float("nan")
+        self._prepositioned = False
         self.logger.info(
             f"ExecuteTest initialized (name={self.name!r}, index={self.index}, "
             f"team={self.team}). FIRST CONTACT ATTEMPT -- conservative verification."
@@ -169,8 +171,15 @@ class ExecuteTest(BaseAgent):
             self._telemetry()
             return neutral
 
+        navigation_target = setup.approach_point
+        self._prepositioned = False
+        if preparing:
+            navigation_target, self._prepositioned = self._preposition_target(
+                setup, ball_pos, ball_vel
+            )
+
         if self.last_target is not None:
-            target_shift = (setup.approach_point - self.last_target).flat().length()
+            target_shift = (navigation_target - self.last_target).flat().length()
             if target_shift > 250.0:
                 self._reset_search()
 
@@ -179,9 +188,9 @@ class ExecuteTest(BaseAgent):
 
         self.state = STATE_STABILIZE if setup.viable else STATE_SETUP
         controls, nav_telemetry = navigation.drive_to_target(
-            car, setup.approach_point, arrival_radius=SETUP_ARRIVAL_RADIUS
+            car, navigation_target, arrival_radius=SETUP_ARRIVAL_RADIUS
         )
-        self.last_target = setup.approach_point
+        self.last_target = navigation_target
 
         if self.tracking_since is not None and now - self.tracking_since > STABILIZE_TIMEOUT_SECONDS:
             self.state = STATE_RECOVER
@@ -233,6 +242,39 @@ class ExecuteTest(BaseAgent):
             and math.isfinite(setup.approach_point.y)
             and math.isfinite(setup.approach_point.z)
         )
+
+    def _preposition_target(self, setup, ball_pos, ball_vel):
+        """Aim at a bounded estimate of the wall-impact setup point.
+
+        This is only used before the ball is near the wall.  Once the setup is
+        viable, navigation returns to the live approach point.  A prediction is
+        accepted only when the projected ball still produces a valid geometry;
+        otherwise the current setup point is retained without clamping.
+        """
+        inward_speed = -self._last_wall_velocity
+        if inward_speed <= PREPARE_MIN_INWARD_SPEED:
+            return setup.approach_point, False
+
+        time_to_wall = setup.ball_wall_gap / inward_speed
+        if not math.isfinite(time_to_wall) or not 0.0 < time_to_wall <= PREPARE_MAX_LEAD_SECONDS:
+            return setup.approach_point, False
+
+        predicted_y = ball_pos.y + ball_vel.y * time_to_wall
+        predicted_z = ball_pos.z + ball_vel.z * time_to_wall
+        if setup.wall == geom.WALL_RIGHT:
+            predicted_x = geom.field.SIDE_WALL_X - geom.field.BALL_RADIUS
+        elif setup.wall == geom.WALL_LEFT:
+            predicted_x = -geom.field.SIDE_WALL_X + geom.field.BALL_RADIUS
+        else:
+            return setup.approach_point, False
+
+        predicted_ball = Vec3(predicted_x, predicted_y, predicted_z)
+        predicted_setup = geom.compute_wall_pinch_setup(
+            predicted_ball, ball_vel, self.team
+        )
+        if not predicted_setup.viable:
+            return setup.approach_point, False
+        return predicted_setup.approach_point, True
 
     def _execute_gate(self, car, setup):
         car_loc = Vec3(car.physics.location)
@@ -337,6 +379,7 @@ class ExecuteTest(BaseAgent):
             "heading_error": float("nan"),
             "execute_distance": float("nan"),
             "execute_ready": False,
+            "prepositioned": False,
             "result": self.result,
         }
 
@@ -349,6 +392,7 @@ class ExecuteTest(BaseAgent):
             "ball_wall_gap": setup.ball_wall_gap,
             "wall_velocity": self._last_wall_velocity,
             "result": self.result,
+            "prepositioned": self._prepositioned,
             "ball_speed": ball_vel.flat().length(),
             "execute_elapsed": (
                 float("nan") if self.execute_started is None else now - self.execute_started
@@ -430,6 +474,7 @@ class ExecuteTest(BaseAgent):
             f"dist={t.get('target_distance', float('nan')):.0f} "
             f"he_deg={math.degrees(t.get('heading_error', float('nan'))):.0f} "
             f"ready={t.get('execute_ready', False)} "
+            f"preplan={t.get('prepositioned', False)} "
             f"exec_dist={t.get('execute_distance', float('nan')):.0f} "
             f"ball_spd={t.get('ball_speed', float('nan')):.0f} "
             f"tan_gain={t.get('tangent_gain', float('nan')):.0f}"
